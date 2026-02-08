@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\UserDepartment;
 use App\Models\WhatsAppNumber;
 use App\Models\WhatsAppSession;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -70,22 +71,53 @@ class WhatsAppNumbersSeeder extends Seeder
             $departments[] = $department;
         }
 
-        // Criar usuário admin
-        $adminUser = User::firstOrCreate(
-            ['email' => 'admin@demo.com'],
+        // Criar usuário super admin (acesso total)
+        // Usar query direta para evitar validações do Eloquent
+        if (!User::where('email', 'superadmin@demo.com')->exists()) {
+            DB::table('users')->insert([
+                'name' => 'Super Administrador',
+                'email' => 'superadmin@demo.com',
+                'password' => Hash::make('password'),
+                'company_id' => null, // Super admin não pertence a empresa
+                'role' => 'super_admin',
+                'is_owner' => false,
+                'email_verified_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+        $superAdmin = User::where('email', 'superadmin@demo.com')->first();
+
+        // Criar usuário dono da empresa
+        $companyOwner = User::firstOrCreate(
+            ['email' => 'owner@demo.com'],
             [
-                'name' => 'Admin Demo',
+                'name' => 'Dono da Empresa',
                 'password' => Hash::make('password'),
                 'company_id' => $company->id,
+                'role' => 'company_owner',
+                'is_owner' => true,
             ]
         );
 
-        // Atribuir admin aos departamentos (apenas geral como primary)
+        // Criar usuário funcionário
+        $employee = User::firstOrCreate(
+            ['email' => 'employee@demo.com'],
+            [
+                'name' => 'Funcionário Demo',
+                'password' => Hash::make('password'),
+                'company_id' => $company->id,
+                'role' => 'employee',
+                'is_owner' => false,
+            ]
+        );
+
+        // Atribuir company owner ao departamento geral
         $generalDept = collect($departments)->firstWhere('slug', 'geral');
-        if ($generalDept) {
+        if ($generalDept && isset($companyOwner)) {
             UserDepartment::firstOrCreate(
                 [
-                    'user_id' => $adminUser->id,
+                    'user_id' => $companyOwner->id,
                     'department_id' => $generalDept->id,
                 ],
                 [
@@ -205,7 +237,12 @@ class WhatsAppNumbersSeeder extends Seeder
 
         $this->command->info('Dados de demonstração criados com sucesso!');
         $this->command->info('Empresa: ' . $company->name);
-        $this->command->info('Usuário admin: ' . $adminUser->email . ' (password: password)');
+        $this->command->info('');
+        $this->command->info('Usuários criados:');
+        $this->command->info('├── Super Admin: superadmin@demo.com (password: password)');
+        $this->command->info('├── Company Owner: owner@demo.com (password: password)');
+        $this->command->info('└── Employee: employee@demo.com (password: password)');
+        $this->command->info('');
         $this->command->info('Números WhatsApp criados: ' . WhatsAppNumber::count());
         $this->command->info('Departamentos criados: ' . Department::count());
     }

@@ -34,7 +34,24 @@ class User extends Authenticatable
         'email',
         'password',
         'company_id',
+        'role',
+        'is_owner',
     ];
+
+    // Super admin pode não ter company_id
+    public static function boot()
+    {
+        parent::boot();
+
+        static::saving(function ($user) {
+            // Super admin pode ter company_id null
+            if ($user->role === 'super_admin') {
+                // Permite company_id null para super admin
+            } elseif ($user->role !== 'super_admin' && !$user->company_id) {
+                throw new \Exception('Usuários não-admin devem pertencer a uma empresa');
+            }
+        });
+    }
 
     /**
      * The attributes that should be hidden for serialization.
@@ -67,6 +84,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_owner' => 'boolean',
         ];
     }
 
@@ -122,16 +140,71 @@ class User extends Authenticatable
                ($this->belongsToDepartment($conversation->department_id) || $this->hasRole('admin'));
     }
 
-    public function hasRole($role): bool
-    {
-        // Implementar verificação de roles conforme necessário
-        // Por enquanto, retorna false
-        return false;
-    }
 
     // Scopes
     public function scopeForCompany($query, $companyId)
     {
         return $query->where('company_id', $companyId);
+    }
+
+    public function scopeByRole($query, $role)
+    {
+        return $query->where('role', $role);
+    }
+
+    public function scopeOwners($query)
+    {
+        return $query->where('is_owner', true);
+    }
+
+    // Helpers para roles
+    public function isSuperAdmin(): bool
+    {
+        return $this->role === 'super_admin';
+    }
+
+    public function isCompanyOwner(): bool
+    {
+        return $this->role === 'company_owner' && $this->is_owner;
+    }
+
+    public function isEmployee(): bool
+    {
+        return $this->role === 'employee';
+    }
+
+    public function hasRole(string $role): bool
+    {
+        return $this->role === $role;
+    }
+
+    public function canManageCompany(): bool
+    {
+        return $this->isSuperAdmin() || $this->isCompanyOwner();
+    }
+
+    public function canManageUsers(): bool
+    {
+        return $this->isSuperAdmin() || $this->isCompanyOwner();
+    }
+
+    public function canViewAllCompanies(): bool
+    {
+        return $this->isSuperAdmin();
+    }
+
+    public function canManageDepartments(): bool
+    {
+        return $this->isSuperAdmin() || $this->isCompanyOwner();
+    }
+
+    public function getRoleDisplayName(): string
+    {
+        return match ($this->role) {
+            'super_admin' => 'Administrador Geral',
+            'company_owner' => 'Dono da Empresa',
+            'employee' => 'Funcionário',
+            default => 'Usuário',
+        };
     }
 }

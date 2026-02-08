@@ -17,7 +17,11 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
         ]);
 
-        //
+        // Middlewares customizados
+        $middleware->alias([
+            'role' => \App\Http\Middleware\CheckRole::class,
+            'company.access' => \App\Http\Middleware\CheckCompanyAccess::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
