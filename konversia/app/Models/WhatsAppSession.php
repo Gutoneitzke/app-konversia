@@ -6,16 +6,19 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class WhatsAppSession extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
+
+    protected $table = 'whatsapp_sessions';
 
     protected $fillable = [
         'company_id',
+        'whatsapp_number_id',
         'session_id',
         'status',
-        'phone_number',
         'metadata',
         'connected_at',
         'last_activity',
@@ -31,6 +34,11 @@ class WhatsAppSession extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    public function whatsappNumber(): BelongsTo
+    {
+        return $this->belongsTo(WhatsAppNumber::class);
     }
 
     public function conversations(): HasMany
@@ -90,5 +98,31 @@ class WhatsAppSession extends Model
     public function updateActivity(): void
     {
         $this->update(['last_activity' => now()]);
+
+        // Também atualiza a atividade do número
+        if ($this->whatsappNumber) {
+            $this->whatsappNumber->updateActivity();
+        }
+    }
+
+    // Helpers para acessar informações do número
+    public function getPhoneNumber(): ?string
+    {
+        return $this->whatsappNumber?->phone_number;
+    }
+
+    public function getFormattedPhoneNumber(): ?string
+    {
+        return $this->whatsappNumber?->getFormattedPhoneNumber();
+    }
+
+    public function getNumberNickname(): ?string
+    {
+        return $this->whatsappNumber?->nickname;
+    }
+
+    public function getNumberApiKey(): ?string
+    {
+        return $this->whatsappNumber?->api_key;
     }
 }

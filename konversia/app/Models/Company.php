@@ -6,10 +6,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Company extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'name',
@@ -34,9 +35,19 @@ class Company extends Model
         return $this->hasMany(Department::class);
     }
 
+    public function whatsappNumbers(): HasMany
+    {
+        return $this->hasMany(WhatsAppNumber::class);
+    }
+
     public function whatsappSessions(): HasMany
     {
         return $this->hasMany(WhatsAppSession::class);
+    }
+
+    public function contacts(): HasMany
+    {
+        return $this->hasMany(Contact::class);
     }
 
     public function conversations(): HasMany

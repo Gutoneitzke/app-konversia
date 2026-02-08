@@ -6,15 +6,17 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Conversation extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'company_id',
         'whatsapp_session_id',
         'department_id',
+        'contact_id',
         'contact_jid',
         'contact_name',
         'status',
@@ -54,6 +56,11 @@ class Conversation extends Model
     public function transferredFromDepartment(): BelongsTo
     {
         return $this->belongsTo(Department::class, 'transferred_from_department_id');
+    }
+
+    public function contact(): BelongsTo
+    {
+        return $this->belongsTo(Contact::class);
     }
 
     public function messages(): HasMany
@@ -196,5 +203,60 @@ class Conversation extends Model
     public function updateLastMessageAt(): void
     {
         $this->update(['last_message_at' => now()]);
+    }
+
+    // Helpers para Contact
+    public function getContactDisplayName(): string
+    {
+        return $this->contact?->getDisplayName() ?? $this->contact_name ?? 'Contato Desconhecido';
+    }
+
+    public function getContactJid(): string
+    {
+        return $this->contact?->jid ?? $this->contact_jid;
+    }
+
+    public function getContactPhoneNumber(): ?string
+    {
+        return $this->contact?->getFormattedPhoneNumber() ?? null;
+    }
+
+    public function isContactBlocked(): bool
+    {
+        return $this->contact?->is_blocked ?? false;
+    }
+
+    public function isContactOnline(): bool
+    {
+        return $this->contact?->isOnline() ?? false;
+    }
+
+    // Métodos estáticos úteis
+    public static function findOrCreateForContact(
+        Contact $contact,
+        WhatsAppSession $session,
+        Department $department,
+        array $conversationData = []
+    ): self {
+        // Verificar se já existe uma conversa ativa para este contato
+        $existingConversation = static::where('contact_id', $contact->id)
+                                     ->where('whatsapp_session_id', $session->id)
+                                     ->whereIn('status', ['pending', 'in_progress'])
+                                     ->first();
+
+        if ($existingConversation) {
+            return $existingConversation;
+        }
+
+        // Criar nova conversa
+        return static::create(array_merge([
+            'company_id' => $contact->company_id,
+            'whatsapp_session_id' => $session->id,
+            'department_id' => $department->id,
+            'contact_id' => $contact->id,
+            'contact_jid' => $contact->jid,
+            'contact_name' => $contact->name,
+            'status' => 'pending',
+        ], $conversationData));
     }
 }
