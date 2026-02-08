@@ -35,4 +35,9 @@ return [
         ],
     ],
 
+    'whatsapp' => [
+        'service_url' => env('WHATSAPP_SERVICE_URL', 'http://localhost:3001'),
+        'laravel_url' => env('LARAVEL_URL', 'http://laravel.test'),
+    ],
+
 ];
