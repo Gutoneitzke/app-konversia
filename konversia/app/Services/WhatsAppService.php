@@ -151,8 +151,11 @@ class WhatsAppService
      */
     public function getQRCode(WhatsAppNumber $whatsappNumber): ?string
     {
+        // Buscar sessão mais recente com QR code (pode estar connecting ou connected)
         $session = WhatsAppSession::where('whatsapp_number_id', $whatsappNumber->id)
-                                  ->where('status', 'connecting')
+                                  ->whereIn('status', ['connecting', 'connected'])
+                                  ->whereNotNull('metadata->qr_code')
+                                  ->latest('created_at')
                                   ->first();
 
         if (!$session || !isset($session->metadata['qr_code'])) {

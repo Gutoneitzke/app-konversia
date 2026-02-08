@@ -51,6 +51,12 @@ const logout = () => {
                                 <NavLink :href="route('dashboard')" :active="route().current('dashboard')">
                                     Dashboard
                                 </NavLink>
+                                <NavLink :href="route('whatsapp-numbers.index')" :active="route().current('whatsapp-numbers.*')">
+                                    Números WhatsApp
+                                </NavLink>
+                                <NavLink :href="route('conversations.index')" :active="route().current('conversations.*')">
+                                    Conversas
+                                </NavLink>
                             </div>
                         </div>
 
@@ -193,6 +199,12 @@ const logout = () => {
                     <div class="pt-2 pb-3 space-y-1">
                         <ResponsiveNavLink :href="route('dashboard')" :active="route().current('dashboard')">
                             Dashboard
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink :href="route('whatsapp-numbers.index')" :active="route().current('whatsapp-numbers.*')">
+                            Números WhatsApp
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink :href="route('conversations.index')" :active="route().current('conversations.*')">
+                            Conversas
                         </ResponsiveNavLink>
                     </div>
 
