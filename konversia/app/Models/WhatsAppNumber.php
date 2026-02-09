@@ -60,12 +60,12 @@ class WhatsAppNumber extends Model
 
     public function sessions(): HasMany
     {
-        return $this->hasMany(WhatsAppSession::class);
+        return $this->hasMany(WhatsAppSession::class, 'whatsapp_number_id');
     }
 
     public function activeSession(): HasOne
     {
-        return $this->hasOne(WhatsAppSession::class)->where('status', 'connected');
+        return $this->hasOne(WhatsAppSession::class, 'whatsapp_number_id')->where('status', 'connected');
     }
 
     public function contacts(): HasMany
@@ -77,7 +77,8 @@ class WhatsAppNumber extends Model
     {
         return $this->hasMany(Conversation::class, 'whatsapp_session_id')
                     ->join('whatsapp_sessions', 'conversations.whatsapp_session_id', '=', 'whatsapp_sessions.id')
-                    ->where('whatsapp_sessions.whatsapp_number_id', $this->id);
+                    ->where('whatsapp_sessions.whatsapp_number_id', $this->id)
+                    ->select('conversations.*');
     }
 
     // Scopes

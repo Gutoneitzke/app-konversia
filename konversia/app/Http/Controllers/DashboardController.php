@@ -106,7 +106,7 @@ class DashboardController extends Controller
 
         // Mensagens hoje
         $messages_today = $company->messages()
-            ->whereDate('created_at', today())
+            ->whereDate('messages.created_at', today())
             ->count();
 
         return Inertia::render('Dashboard/CompanyOwner', [
@@ -128,7 +128,7 @@ class DashboardController extends Controller
         if (!$company) {
             abort(403, 'Usuário não possui empresa associada');
         }
-        $departments = $user->getActiveDepartments()->pluck('id');
+        $departments = $user->getActiveDepartments()->get()->pluck('id');
 
         // Conversas pendentes dos departamentos do usuário
         $pending_conversations = Conversation::where('company_id', $company->id)
@@ -156,7 +156,7 @@ class DashboardController extends Controller
                 $query->where('company_id', $company->id)
                       ->whereIn('department_id', $departments);
             })
-            ->whereDate('created_at', today())
+            ->whereDate('messages.created_at', today())
             ->where('direction', 'inbound')
             ->count(),
         ];

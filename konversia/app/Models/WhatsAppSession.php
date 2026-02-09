@@ -38,7 +38,7 @@ class WhatsAppSession extends Model
 
     public function whatsappNumber(): BelongsTo
     {
-        return $this->belongsTo(WhatsAppNumber::class);
+        return $this->belongsTo(WhatsAppNumber::class, 'whatsapp_number_id');
     }
 
     public function conversations(): HasMany

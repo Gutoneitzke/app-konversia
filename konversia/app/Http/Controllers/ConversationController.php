@@ -30,7 +30,7 @@ class ConversationController extends Controller
         // Filtros por role
         if ($user->isEmployee()) {
             // Employee só vê conversas dos seus departamentos
-            $departments = $user->getActiveDepartments()->pluck('id');
+            $departments = $user->getActiveDepartments()->get()->pluck('id');
             $query->whereIn('department_id', $departments);
         }
 
