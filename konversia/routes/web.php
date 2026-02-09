@@ -31,4 +31,9 @@ Route::middleware([
     // Conversas
     Route::resource('conversations', \App\Http\Controllers\ConversationController::class)->only(['index', 'show']);
     Route::post('/conversations/{conversation}/messages', [\App\Http\Controllers\MessageController::class, 'store'])->name('conversations.messages.store');
+
+    // Verificação de autenticação
+    Route::get('/auth/check', function () {
+        return response()->json(['authenticated' => auth()->check()]);
+    })->name('auth.check');
 });

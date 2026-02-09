@@ -15,9 +15,9 @@ const sending = ref(false);
 
 const sendMessage = () => {
     if (!form.content.trim()) return;
-    
+
     sending.value = true;
-    
+
     // Envio otimista (opcional, pode ser implementado depois) ou apenas envio simples
     form.post(route('conversations.messages.store', props.conversation.id), {
         preserveScroll: true,
@@ -25,13 +25,45 @@ const sendMessage = () => {
             form.reset();
             sending.value = false;
         },
-        onError: () => {
+        onError: (errors) => {
+            sending.value = false;
+
+            console.error('Erro ao enviar mensagem:', errors);
+
+            // Verificar se há erros específicos de validação
+            if (errors && typeof errors === 'object' && Object.keys(errors).length > 0) {
+                // Erros de validação do Laravel (ex: campo obrigatório)
+                console.error('Erro de validação:', errors);
+                return;
+            }
+
+            // Verificar se é erro de autenticação/servidor
+            if (form.hasErrors && Object.keys(form.errors).length === 0) {
+                // Erro sem campos específicos - provavelmente autenticação ou servidor
+                console.error('Erro de autenticação ou servidor detectado');
+
+                // Tentar verificar se é erro 401/302 através da resposta
+                // O Inertia.js não expõe diretamente o status code, mas podemos inferir
+
+                // Mostrar mensagem de erro ao usuário
+                alert('Erro ao enviar mensagem. Sua sessão pode ter expirado. A página será recarregada.');
+
+                // Recarregar a página para tentar renovar a sessão
+                window.location.reload();
+                return;
+            }
+
+            // Erro genérico
+            alert('Erro ao enviar mensagem. Tente novamente.');
+        },
+        onFinish: () => {
             sending.value = false;
         }
     });
 };
 
 let pollingInterval = null;
+let authCheckInterval = null;
 
 onMounted(() => {
     pollingInterval = setInterval(() => {
@@ -43,6 +75,32 @@ onMounted(() => {
             preserveScroll: true,
         });
     }, 3000); // 3 segundos
+
+    // Verificar autenticação a cada 30 segundos
+    authCheckInterval = setInterval(() => {
+        // Usar o endpoint dedicado de verificação de autenticação
+        fetch(route('auth.check'), {
+            method: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+                'X-Inertia': 'true',
+            },
+            credentials: 'same-origin'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (!data.authenticated) {
+                console.warn('Sessão expirada detectada');
+                alert('Sua sessão expirou. Você será redirecionado para o login.');
+                window.location.href = route('login');
+            }
+        })
+        .catch(error => {
+            console.warn('Erro ao verificar autenticação:', error);
+            // Se não conseguir verificar, assumir que está tudo ok por enquanto
+        });
+    }, 30000); // 30 segundos
     
     // Auto-scroll para o fim da lista de mensagens
     scrollToBottom();
@@ -50,6 +108,7 @@ onMounted(() => {
 
 onUnmounted(() => {
     if (pollingInterval) clearInterval(pollingInterval);
+    if (authCheckInterval) clearInterval(authCheckInterval);
 });
 
 const messagesContainer = ref(null);

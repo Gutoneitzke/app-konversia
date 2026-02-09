@@ -25,8 +25,24 @@ class MessageController extends Controller
     {
         $user = $request->user();
 
+        // Se não há usuário autenticado e é uma requisição Inertia/AJAX, retornar erro adequado
+        if (!$user) {
+            if ($request->header('X-Inertia') || $request->expectsJson()) {
+                return response()->json([
+                    'message' => 'Não autenticado. Faça login novamente.',
+                    'redirect' => route('login')
+                ], 401);
+            }
+            return redirect()->route('login');
+        }
+
         // Verificar permissão
         if ($conversation->company_id !== $user->company_id) {
+            if ($request->header('X-Inertia') || $request->expectsJson()) {
+                return response()->json([
+                    'message' => 'Acesso negado a esta conversa.'
+                ], 403);
+            }
             abort(403);
         }
 
