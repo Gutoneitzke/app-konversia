@@ -122,7 +122,10 @@ class WhatsAppService
     public function checkStatus(WhatsAppNumber $whatsappNumber): ?array
     {
         try {
-            $session = $whatsappNumber->activeSession;
+            // Buscar sessão mais recente (mesmo que conectando)
+            $session = WhatsAppSession::where('whatsapp_number_id', $whatsappNumber->id)
+                ->latest('created_at')
+                ->first();
 
             if (!$session) {
                 return null;
@@ -131,7 +134,27 @@ class WhatsAppService
             $response = Http::get("{$this->serviceUrl}/status/{$session->session_id}");
 
             if ($response->successful()) {
-                return $response->json();
+                $data = $response->json();
+
+                if (isset($data['status']) && $data['status'] === 'connected') {
+                    if (!$whatsappNumber->isConnected()) {
+                        $whatsappNumber->updateStatus('connected');
+                    }
+
+                    if ($session->status !== 'connected') {
+                        $session->update(['status' => 'connected']);
+                    }
+                } elseif (isset($data['status']) && $data['status'] === 'disconnected') {
+                    // Se o serviço diz que está desconectado, mas o banco diz que está conectado/conectando
+                    if ($whatsappNumber->isConnected() || $whatsappNumber->status === 'connecting') {
+                        $whatsappNumber->updateStatus('inactive');
+                    }
+                    if ($session->status !== 'disconnected') {
+                        $session->update(['status' => 'disconnected']);
+                    }
+                }
+
+                return $data;
             }
 
             return null;
@@ -153,10 +176,10 @@ class WhatsAppService
     {
         // Buscar sessão mais recente com QR code (pode estar connecting ou connected)
         $session = WhatsAppSession::where('whatsapp_number_id', $whatsappNumber->id)
-                                  ->whereIn('status', ['connecting', 'connected'])
-                                  ->whereNotNull('metadata->qr_code')
-                                  ->latest('created_at')
-                                  ->first();
+            ->whereIn('status', ['connecting', 'connected'])
+            ->whereNotNull('metadata->qr_code')
+            ->latest('created_at')
+            ->first();
 
         if (!$session || !isset($session->metadata['qr_code'])) {
             return null;

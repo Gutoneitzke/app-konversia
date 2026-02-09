@@ -9,11 +9,16 @@ const qrcode = require('qrcode')
 const axios = require('axios')
 const path = require('path')
 const fs = require('fs')
+const pino = require('pino')
 
 // Armazenar múltiplas sessões
 const sessions = new Map()
+const LARAVEL_API_URL = process.env.LARAVEL_URL || 'http://127.0.0.1';
 
 async function connect(sessionId) {
+    console.log(`Iniciando conexão para sessão: ${sessionId}`);
+    console.log(`Laravel API URL: ${LARAVEL_API_URL}`);
+
     try {
         const sessionsDir = path.join(__dirname, 'sessions')
         if (!fs.existsSync(sessionsDir)) {
@@ -25,7 +30,7 @@ async function connect(sessionId) {
         const sock = makeWASocket({
             auth: state,
             printQRInTerminal: false,
-            logger: { level: 'silent' } // Reduzir logs
+            logger: pino({ level: 'silent' }) // Reduzir logs
         })
 
         // Salvar sessão no Map
@@ -38,14 +43,16 @@ async function connect(sessionId) {
 
             if (qr) {
                 const qrImage = await qrcode.toDataURL(qr)
-                await axios.post(`${process.env.LARAVEL_URL || 'http://laravel.test'}/api/whatsapp/qr`, {
+                console.log('Tentando enviar QR para o Laravel...');
+                await axios.post(`${LARAVEL_API_URL}/api/whatsapp/qr`, {
                     session_id: sessionId,
                     qr: qrImage
-                }).catch(err => console.error('Erro ao enviar QR:', err.message))
+                }).then(() => console.log('QR enviado com sucesso!'))
+                    .catch(err => console.error('Erro ao enviar QR:', err.message, err.response?.data))
             }
 
             if (connection === 'open') {
-                await axios.post(`${process.env.LARAVEL_URL || 'http://laravel.test'}/api/whatsapp/status`, {
+                await axios.post(`${LARAVEL_API_URL}/api/whatsapp/status`, {
                     session_id: sessionId,
                     status: 'connected'
                 }).catch(err => console.error('Erro ao atualizar status:', err.message))
@@ -55,7 +62,7 @@ async function connect(sessionId) {
                 const shouldReconnect =
                     (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut
 
-                await axios.post(`${process.env.LARAVEL_URL || 'http://laravel.test'}/api/whatsapp/status`, {
+                await axios.post(`${LARAVEL_API_URL}/api/whatsapp/status`, {
                     session_id: sessionId,
                     status: 'disconnected',
                     error: lastDisconnect?.error?.message || null
@@ -86,18 +93,18 @@ async function connect(sessionId) {
                     metadata: extractMetadata(msg.message)
                 }
 
-                await axios.post(`${process.env.LARAVEL_URL || 'http://laravel.test'}/api/whatsapp/message`, messageData)
+                await axios.post(`${LARAVEL_API_URL}/api/whatsapp/message`, messageData)
                     .catch(err => console.error('Erro ao enviar mensagem:', err.message))
             }
         })
 
     } catch (error) {
         console.error(`Erro ao conectar sessão ${sessionId}:`, error.message)
-        await axios.post(`${process.env.LARAVEL_URL || 'http://laravel.test'}/api/whatsapp/status`, {
+        await axios.post(`${LARAVEL_API_URL}/api/whatsapp/status`, {
             session_id: sessionId,
             status: 'error',
             error: error.message
-        }).catch(() => {})
+        }).catch(() => { })
     }
 }
 
@@ -123,14 +130,14 @@ function getMessageType(message) {
 
 function extractMetadata(message) {
     const metadata = {}
-    
+
     if (message.imageMessage) {
         metadata.width = message.imageMessage.width
         metadata.height = message.imageMessage.height
         metadata.mimetype = message.imageMessage.mimetype
         metadata.url = message.imageMessage.url
     }
-    
+
     if (message.videoMessage) {
         metadata.width = message.videoMessage.width
         metadata.height = message.videoMessage.height
@@ -138,30 +145,30 @@ function extractMetadata(message) {
         metadata.mimetype = message.videoMessage.mimetype
         metadata.url = message.videoMessage.url
     }
-    
+
     if (message.audioMessage) {
         metadata.duration = message.audioMessage.seconds
         metadata.mimetype = message.audioMessage.mimetype
         metadata.ptt = message.audioMessage.ptt
     }
-    
+
     if (message.documentMessage) {
         metadata.filename = message.documentMessage.fileName
         metadata.mimetype = message.documentMessage.mimetype
         metadata.url = message.documentMessage.url
     }
-    
+
     if (message.locationMessage) {
         metadata.latitude = message.locationMessage.degreesLatitude
         metadata.longitude = message.locationMessage.degreesLongitude
     }
-    
+
     return metadata
 }
 
 async function sendMessage(sessionId, to, message, type = 'text') {
     const sock = sessions.get(sessionId)
-    
+
     if (!sock) {
         throw new Error(`Sessão ${sessionId} não encontrada ou desconectada`)
     }

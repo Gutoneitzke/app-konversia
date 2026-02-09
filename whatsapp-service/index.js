@@ -1,3 +1,4 @@
+require('dotenv').config()
 const express = require('express')
 const { connect, sendMessage, disconnect, getSession } = require('./whatsapp')
 
@@ -8,7 +9,7 @@ app.use(express.json())
 app.post('/connect', async (req, res) => {
   try {
     const { session_id } = req.body
-    
+
     if (!session_id) {
       return res.status(400).json({ error: 'session_id é obrigatório' })
     }
@@ -24,7 +25,7 @@ app.post('/connect', async (req, res) => {
 app.post('/disconnect', async (req, res) => {
   try {
     const { session_id } = req.body
-    
+
     if (!session_id) {
       return res.status(400).json({ error: 'session_id é obrigatório' })
     }
@@ -40,7 +41,7 @@ app.post('/disconnect', async (req, res) => {
 app.post('/send', async (req, res) => {
   try {
     const { session_id, to, message, type } = req.body
-    
+
     if (!session_id || !to || !message) {
       return res.status(400).json({ error: 'session_id, to e message são obrigatórios' })
     }
@@ -56,8 +57,8 @@ app.post('/send', async (req, res) => {
 app.get('/status/:session_id', (req, res) => {
   const { session_id } = req.params
   const sock = getSession(session_id)
-  
-  res.json({ 
+
+  res.json({
     session_id,
     connected: sock !== undefined,
     status: sock ? 'connected' : 'disconnected'

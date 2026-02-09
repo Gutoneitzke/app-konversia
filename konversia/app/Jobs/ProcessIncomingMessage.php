@@ -27,7 +27,8 @@ class ProcessIncomingMessage implements ShouldQueue
         public ?string $messageId,
         public string $type,
         public array $metadata
-    ) {}
+    ) {
+    }
 
     public function handle(): void
     {
@@ -59,7 +60,7 @@ class ProcessIncomingMessage implements ShouldQueue
 
             // Buscar ou criar conversa
             $department = $company->departments()->where('slug', 'geral')->first();
-            
+
             if (!$department) {
                 $department = $company->departments()->first();
             }

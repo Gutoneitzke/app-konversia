@@ -59,6 +59,24 @@ const getStatusText = (status) => {
     };
     return texts[status] || status;
 };
+
+import { onMounted, onUnmounted } from 'vue';
+
+let pollingInterval = null;
+
+onMounted(() => {
+    pollingInterval = setInterval(() => {
+        router.reload({
+            only: ['conversations'],
+            preserveState: true,
+            preserveScroll: true,
+        });
+    }, 15000); // 15 segundos
+});
+
+onUnmounted(() => {
+    if (pollingInterval) clearInterval(pollingInterval);
+});
 </script>
 
 <template>

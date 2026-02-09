@@ -3,7 +3,9 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { Head, router } from '@inertiajs/vue3';
 import { ref, onMounted, onUnmounted } from 'vue';
 
-defineProps({
+import axios from 'axios';
+
+const props = defineProps({
     whatsappNumber: Object,
     qrCode: String,
 });
@@ -15,18 +17,15 @@ let qrInterval = null;
 
 const checkStatus = () => {
     checkingStatus.value = true;
-    router.get(route('whatsapp-numbers.status', whatsappNumber.id), {}, {
-        preserveState: true,
-        preserveScroll: true,
-        onSuccess: (page) => {
-            if (page.props.status?.connected) {
+    axios.get(route('whatsapp-numbers.status', props.whatsappNumber.api_key))
+        .then(response => {
+            if (response.data.status === 'connected') {
                 router.visit(route('whatsapp-numbers.index'));
             }
-        },
-        onFinish: () => {
+        })
+        .finally(() => {
             checkingStatus.value = false;
-        }
-    });
+        });
 };
 
 const refreshQR = () => {
@@ -61,7 +60,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <AppLayout title="QR Code - {{ whatsappNumber.nickname }}">
+    <AppLayout :title="'QR Code - ' + whatsappNumber.nickname">
         <Head title="QR Code" />
 
         <template #header>

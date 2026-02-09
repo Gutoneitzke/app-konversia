@@ -11,19 +11,19 @@ const connecting = ref({});
 
 const connect = (number) => {
     connecting.value[number.id] = true;
-    router.post(route('whatsapp-numbers.connect', number.id), {}, {
+    router.post(route('whatsapp-numbers.connect', number.api_key), {}, {
         preserveScroll: true,
         onFinish: () => {
             connecting.value[number.id] = false;
             setTimeout(() => {
-                router.visit(route('whatsapp-numbers.qr', number.id));
+                router.visit(route('whatsapp-numbers.qr', number.api_key));
             }, 2000);
         }
     });
 };
 
 const disconnect = (number) => {
-    router.post(route('whatsapp-numbers.disconnect', number.id), {}, {
+    router.post(route('whatsapp-numbers.disconnect', number.api_key), {}, {
         preserveScroll: true,
     });
 };
@@ -104,7 +104,7 @@ const getStatusText = (status) => {
                                         </button>
                                         <Link
                                             v-if="number.status === 'connecting'"
-                                            :href="route('whatsapp-numbers.qr', number.id)"
+                                            :href="route('whatsapp-numbers.qr', number.api_key)"
                                             class="inline-flex items-center px-4 py-2 bg-green-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-green-700 focus:bg-green-700 active:bg-green-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition ease-in-out duration-150"
                                         >
                                             Ver QR Code

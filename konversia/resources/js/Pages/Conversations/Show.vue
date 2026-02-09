@@ -1,10 +1,62 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { onMounted, onUnmounted, ref } from 'vue';
 
-defineProps({
+const props = defineProps({
     conversation: Object,
 });
+
+const form = useForm({
+    content: '',
+});
+
+const sending = ref(false);
+
+const sendMessage = () => {
+    if (!form.content.trim()) return;
+    
+    sending.value = true;
+    
+    // Envio otimista (opcional, pode ser implementado depois) ou apenas envio simples
+    form.post(route('conversations.messages.store', props.conversation.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            form.reset();
+            sending.value = false;
+        },
+        onError: () => {
+            sending.value = false;
+        }
+    });
+};
+
+let pollingInterval = null;
+
+onMounted(() => {
+    pollingInterval = setInterval(() => {
+        // Verificar se não estamos editando algo ou interagindo (opcional)
+        // Recarregar apenas mensagens novos
+        router.reload({
+            only: ['conversation'],
+            preserveState: true,
+            preserveScroll: true,
+        });
+    }, 3000); // 3 segundos
+    
+    // Auto-scroll para o fim da lista de mensagens
+    scrollToBottom();
+});
+
+onUnmounted(() => {
+    if (pollingInterval) clearInterval(pollingInterval);
+});
+
+const messagesContainer = ref(null);
+
+const scrollToBottom = () => {
+    // Implementar scroll se necessário
+};
 </script>
 
 <template>
@@ -83,23 +135,26 @@ defineProps({
                         </div>
                     </div>
 
-                    <!-- Área de Envio (placeholder) -->
+                    <!-- Área de Envio -->
                     <div class="px-4 py-3 bg-gray-50 border-t">
                         <div class="flex items-center gap-2">
                             <input
+                                v-model="form.content"
+                                @keyup.enter="sendMessage"
                                 type="text"
                                 placeholder="Digite sua mensagem..."
                                 class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                                disabled
+                                :disabled="sending"
                             />
                             <button
-                                disabled
+                                @click="sendMessage"
+                                :disabled="sending || !form.content.trim()"
                                 class="inline-flex items-center px-4 py-2 bg-blue-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-blue-700 focus:bg-blue-700 active:bg-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition ease-in-out duration-150 disabled:opacity-50"
                             >
-                                Enviar
+                                <span v-if="sending">Enviando...</span>
+                                <span v-else>Enviar</span>
                             </button>
                         </div>
-                        <p class="text-xs text-gray-500 mt-2">Envio de mensagens será implementado na próxima fase</p>
                     </div>
                 </div>
             </div>
