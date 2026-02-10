@@ -3,7 +3,8 @@ module konversia-whatsapp-service
 go 1.25.7
 
 require (
-	github.com/mattn/go-sqlite3 v1.14.33
+	github.com/labstack/echo/v5 v5.0.3
+	github.com/mattn/go-sqlite3 v1.14.34
 	go.mau.fi/whatsmeow v0.0.0-20260210142427-8e7b838d2481
 )
 
