@@ -38,26 +38,26 @@ const submit = () => {
 </script>
 
 <template>
-    <Head title="Two-factor Confirmation" />
+    <Head title="Autenticação de Dois Fatores - Konversia" />
 
     <AuthenticationCard>
         <template #logo>
             <AuthenticationCardLogo />
         </template>
 
-        <div class="mb-4 text-sm text-gray-600">
+        <div class="mb-4 text-sm text-gray-600 dark:text-gray-300">
             <template v-if="! recovery">
-                Please confirm access to your account by entering the authentication code provided by your authenticator application.
+                Por favor, confirme o acesso à sua conta inserindo o código de autenticação fornecido pelo seu aplicativo autenticador.
             </template>
 
             <template v-else>
-                Please confirm access to your account by entering one of your emergency recovery codes.
+                Por favor, confirme o acesso à sua conta inserindo um dos seus códigos de recuperação de emergência.
             </template>
         </div>
 
         <form @submit.prevent="submit">
             <div v-if="! recovery">
-                <InputLabel for="code" value="Code" />
+                <InputLabel for="code" value="Código" />
                 <TextInput
                     id="code"
                     ref="codeInput"
@@ -72,7 +72,7 @@ const submit = () => {
             </div>
 
             <div v-else>
-                <InputLabel for="recovery_code" value="Recovery Code" />
+                <InputLabel for="recovery_code" value="Código de Recuperação" />
                 <TextInput
                     id="recovery_code"
                     ref="recoveryCodeInput"
@@ -84,20 +84,20 @@ const submit = () => {
                 <InputError class="mt-2" :message="form.errors.recovery_code" />
             </div>
 
-            <div class="flex items-center justify-end mt-4">
-                <button type="button" class="text-sm text-gray-600 hover:text-gray-900 underline cursor-pointer" @click.prevent="toggleRecovery">
+            <div class="flex items-center justify-end mt-6">
+                <button type="button" class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors underline cursor-pointer" @click.prevent="toggleRecovery">
                     <template v-if="! recovery">
-                        Use a recovery code
+                        Usar código de recuperação
                     </template>
 
                     <template v-else>
-                        Use an authentication code
+                        Usar código de autenticação
                     </template>
                 </button>
 
-                <PrimaryButton class="ms-4" :class="{ 'opacity-25': form.processing }" :disabled="form.processing">
-                    Log in
-                </PrimaryButton>
+                <button type="submit" class="ms-4 rounded-lg bg-gradient-to-r from-green-500 to-blue-500 px-6 py-2 text-sm font-semibold text-white shadow-sm hover:from-green-600 hover:to-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 transition-all disabled:opacity-25" :disabled="form.processing">
+                    Entrar
+                </button>
             </div>
         </form>
     </AuthenticationCard>

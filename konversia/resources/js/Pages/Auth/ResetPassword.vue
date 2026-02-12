@@ -27,7 +27,7 @@ const submit = () => {
 </script>
 
 <template>
-    <Head title="Reset Password" />
+    <Head title="Redefinir Senha - Konversia" />
 
     <AuthenticationCard>
         <template #logo>
@@ -50,7 +50,7 @@ const submit = () => {
             </div>
 
             <div class="mt-4">
-                <InputLabel for="password" value="Password" />
+                <InputLabel for="password" value="Nova Senha" />
                 <TextInput
                     id="password"
                     v-model="form.password"
@@ -63,7 +63,7 @@ const submit = () => {
             </div>
 
             <div class="mt-4">
-                <InputLabel for="password_confirmation" value="Confirm Password" />
+                <InputLabel for="password_confirmation" value="Confirmar Nova Senha" />
                 <TextInput
                     id="password_confirmation"
                     v-model="form.password_confirmation"
@@ -75,10 +75,10 @@ const submit = () => {
                 <InputError class="mt-2" :message="form.errors.password_confirmation" />
             </div>
 
-            <div class="flex items-center justify-end mt-4">
-                <PrimaryButton :class="{ 'opacity-25': form.processing }" :disabled="form.processing">
-                    Reset Password
-                </PrimaryButton>
+            <div class="flex items-center justify-end mt-6">
+                <button type="submit" class="rounded-lg bg-gradient-to-r from-green-500 to-blue-500 px-6 py-2 text-sm font-semibold text-white shadow-sm hover:from-green-600 hover:to-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 transition-all disabled:opacity-25" :disabled="form.processing">
+                    Redefinir Senha
+                </button>
             </div>
         </form>
     </AuthenticationCard>

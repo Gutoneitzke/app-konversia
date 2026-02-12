@@ -21,15 +21,15 @@ const submit = () => {
 </script>
 
 <template>
-    <Head title="Forgot Password" />
+    <Head title="Esqueci a Senha - Konversia" />
 
     <AuthenticationCard>
         <template #logo>
             <AuthenticationCardLogo />
         </template>
 
-        <div class="mb-4 text-sm text-gray-600">
-            Forgot your password? No problem. Just let us know your email address and we will email you a password reset link that will allow you to choose a new one.
+        <div class="mb-4 text-sm text-gray-600 dark:text-gray-300">
+            Esqueceu sua senha? Sem problema. Basta informar seu endereço de email e enviaremos um link para redefinir sua senha.
         </div>
 
         <div v-if="status" class="mb-4 font-medium text-sm text-green-600">
@@ -51,10 +51,10 @@ const submit = () => {
                 <InputError class="mt-2" :message="form.errors.email" />
             </div>
 
-            <div class="flex items-center justify-end mt-4">
-                <PrimaryButton :class="{ 'opacity-25': form.processing }" :disabled="form.processing">
-                    Email Password Reset Link
-                </PrimaryButton>
+            <div class="flex items-center justify-end mt-6">
+                <button type="submit" class="rounded-lg bg-gradient-to-r from-green-500 to-blue-500 px-6 py-2 text-sm font-semibold text-white shadow-sm hover:from-green-600 hover:to-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 transition-all disabled:opacity-25" :disabled="form.processing">
+                    Enviar Link de Redefinição
+                </button>
             </div>
         </form>
     </AuthenticationCard>

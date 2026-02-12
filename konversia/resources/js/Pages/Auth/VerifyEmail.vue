@@ -19,41 +19,42 @@ const verificationLinkSent = computed(() => props.status === 'verification-link-
 </script>
 
 <template>
-    <Head title="Email Verification" />
+    <Head title="Verificar Email - Konversia" />
 
     <AuthenticationCard>
         <template #logo>
             <AuthenticationCardLogo />
         </template>
 
-        <div class="mb-4 text-sm text-gray-600">
-            Before continuing, could you verify your email address by clicking on the link we just emailed to you? If you didn't receive the email, we will gladly send you another.
+        <div class="mb-4 text-sm text-gray-600 dark:text-gray-300">
+            Antes de continuar, você pode verificar seu endereço de email clicando no link que acabamos de enviar para você? Se não recebeu o email, ficaremos felizes em enviar outro.
         </div>
 
         <div v-if="verificationLinkSent" class="mb-4 font-medium text-sm text-green-600">
-            A new verification link has been sent to the email address you provided in your profile settings.
+            Um novo link de verificação foi enviado para o endereço de email fornecido nas suas configurações de perfil.
         </div>
 
         <form @submit.prevent="submit">
             <div class="mt-4 flex items-center justify-between">
-                <PrimaryButton :class="{ 'opacity-25': form.processing }" :disabled="form.processing">
-                    Resend Verification Email
-                </PrimaryButton>
+                <button type="submit" class="rounded-lg bg-gradient-to-r from-green-500 to-blue-500 px-6 py-2 text-sm font-semibold text-white shadow-sm hover:from-green-600 hover:to-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 transition-all disabled:opacity-25" :disabled="form.processing">
+                    Reenviar Email de Verificação
+                </button>
 
                 <div>
                     <Link
                         :href="route('profile.show')"
-                        class="underline text-sm text-gray-600 hover:text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                        class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
                     >
-                        Edit Profile</Link>
+                        Editar Perfil
+                    </Link>
 
                     <Link
                         :href="route('logout')"
                         method="post"
                         as="button"
-                        class="underline text-sm text-gray-600 hover:text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ms-2"
+                        class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors ms-2"
                     >
-                        Log Out
+                        Sair
                     </Link>
                 </div>
             </div>
