@@ -33,8 +33,20 @@ const logout = () => {
 
         <Banner />
 
-        <div class="min-h-screen bg-gray-100">
-            <nav class="bg-white border-b border-gray-100">
+        <div class="min-h-screen bg-gradient-to-br from-indigo-50 via-white via-cyan-50 to-emerald-50 relative overflow-hidden">
+            <!-- Animated Background Elements -->
+            <div class="absolute inset-0 overflow-hidden pointer-events-none">
+                <div class="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-blue-400/10 to-purple-500/10 rounded-full blur-3xl animate-pulse"></div>
+                <div class="absolute top-1/2 -left-40 w-96 h-96 bg-gradient-to-tr from-emerald-400/8 to-cyan-500/8 rounded-full blur-3xl animate-pulse delay-1000"></div>
+                <div class="absolute -bottom-40 right-1/4 w-72 h-72 bg-gradient-to-bl from-purple-400/6 to-pink-500/6 rounded-full blur-3xl animate-pulse delay-500"></div>
+                <div class="absolute top-1/4 left-1/4 w-64 h-64 bg-gradient-to-r from-indigo-300/8 to-blue-400/8 rounded-full blur-2xl animate-pulse delay-700"></div>
+                <div class="absolute bottom-1/3 right-1/3 w-48 h-48 bg-gradient-to-l from-cyan-300/10 to-teal-400/10 rounded-full blur-2xl animate-pulse delay-300"></div>
+                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/3 to-transparent opacity-30"></div>
+            </div>
+
+            <!-- Content -->
+            <div class="relative z-10 min-h-screen">
+            <nav class="bg-white/70 backdrop-blur-xl border-b border-white/20 shadow-lg relative z-20">
                 <!-- Primary Navigation Menu -->
                 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div class="flex justify-between h-16">
@@ -61,7 +73,7 @@ const logout = () => {
                         </div>
 
                         <div class="hidden sm:flex sm:items-center sm:ms-6">
-                            <div class="ms-3 relative">
+                            <div class="ms-3 relative z-60">
                                 <!-- Teams Dropdown -->
                                 <Dropdown v-if="$page.props.jetstream.hasTeamFeatures" align="right" width="60">
                                     <template #trigger>
@@ -120,7 +132,7 @@ const logout = () => {
                             </div>
 
                             <!-- Settings Dropdown -->
-                            <div class="ms-3 relative">
+                            <div class="ms-3 relative z-60">
                                 <Dropdown align="right" width="48">
                                     <template #trigger>
                                         <button v-if="$page.props.jetstream.managesProfilePhotos" class="flex text-sm border-2 border-transparent rounded-full focus:outline-none focus:border-gray-300 transition">
@@ -286,9 +298,9 @@ const logout = () => {
             </nav>
 
             <!-- Page Heading -->
-            <header v-if="$slots.header" class="bg-white shadow">
-                <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-                    <slot name="header" />
+            <header v-if="$slots.header" class="bg-white/70 backdrop-blur-xl border-b border-white/20 shadow-lg relative z-10">
+                <div class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+                    <slot name="header" class="text-slate-900 text-3xl font-bold" />
                 </div>
             </header>
 
@@ -296,6 +308,7 @@ const logout = () => {
             <main>
                 <slot />
             </main>
+            </div>
         </div>
     </div>
 </template>

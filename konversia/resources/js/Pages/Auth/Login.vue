@@ -72,16 +72,16 @@ const submit = () => {
             <div class="block mt-4">
                 <label class="flex items-center">
                     <Checkbox v-model:checked="form.remember" name="remember" />
-                    <span class="ms-2 text-sm text-gray-600 dark:text-gray-300">Lembrar-me</span>
+                    <span class="ms-2 text-sm text-slate-700">Lembrar-me</span>
                 </label>
             </div>
 
             <div class="flex items-center justify-end mt-6">
-                <Link v-if="canResetPassword" :href="route('password.request')" class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">
+                <Link v-if="canResetPassword" :href="route('password.request')" class="text-sm text-slate-700 hover:text-slate-900 transition-colors">
                     Esqueceu sua senha?
                 </Link>
 
-                <button type="submit" class="ms-4 rounded-lg bg-gradient-to-r from-green-500 to-blue-500 px-6 py-2 text-sm font-semibold text-white shadow-sm hover:from-green-600 hover:to-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 transition-all disabled:opacity-25" :disabled="form.processing">
+                <button type="submit" class="ms-4 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 px-8 py-3 text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:from-emerald-600 hover:to-cyan-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 transition-all duration-200 transform hover:-translate-y-0.5 disabled:opacity-25" :disabled="form.processing">
                     Entrar
                 </button>
             </div>

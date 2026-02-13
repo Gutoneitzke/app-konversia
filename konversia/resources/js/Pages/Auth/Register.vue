@@ -91,7 +91,7 @@ const submit = () => {
                         <Checkbox id="terms" v-model:checked="form.terms" name="terms" required />
 
                         <div class="ms-2">
-                            Concordo com os <a target="_blank" :href="route('terms.show')" class="underline text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Termos de Serviço</a> e <a target="_blank" :href="route('policy.show')" class="underline text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Política de Privacidade</a>
+                            Concordo com os <a target="_blank" :href="route('terms.show')" class="underline text-sm text-slate-700 hover:text-slate-900 transition-colors">Termos de Serviço</a> e <a target="_blank" :href="route('policy.show')" class="underline text-sm text-slate-700 hover:text-slate-900 transition-colors">Política de Privacidade</a>
                         </div>
                     </div>
                     <InputError class="mt-2" :message="form.errors.terms" />
@@ -99,11 +99,11 @@ const submit = () => {
             </div>
 
             <div class="flex items-center justify-end mt-6">
-                <Link :href="route('login')" class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">
+                <Link :href="route('login')" class="text-sm text-slate-700 hover:text-slate-900 transition-colors">
                     Já possui conta?
                 </Link>
 
-                <button type="submit" class="ms-4 rounded-lg bg-gradient-to-r from-green-500 to-blue-500 px-6 py-2 text-sm font-semibold text-white shadow-sm hover:from-green-600 hover:to-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 transition-all disabled:opacity-25" :disabled="form.processing">
+                <button type="submit" class="ms-4 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 px-8 py-3 text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:from-emerald-600 hover:to-cyan-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 transition-all duration-200 transform hover:-translate-y-0.5 disabled:opacity-25" :disabled="form.processing">
                     Cadastrar
                 </button>
             </div>
