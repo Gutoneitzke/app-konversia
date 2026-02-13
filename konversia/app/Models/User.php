@@ -34,8 +34,10 @@ class User extends Authenticatable
         'email',
         'password',
         'company_id',
+        'department_id',
         'role',
         'is_owner',
+        'active',
     ];
 
     // Super admin pode não ter company_id
@@ -85,6 +87,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_owner' => 'boolean',
+            'active' => 'boolean',
         ];
     }
 
@@ -92,6 +95,11 @@ class User extends Authenticatable
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    public function department(): BelongsTo
+    {
+        return $this->belongsTo(Department::class);
     }
 
     public function departments(): BelongsToMany

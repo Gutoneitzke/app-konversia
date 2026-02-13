@@ -15,6 +15,8 @@ class Company extends Model
     protected $fillable = [
         'name',
         'slug',
+        'email',
+        'phone',
         'active',
         'settings',
     ];
@@ -25,6 +27,11 @@ class Company extends Model
     ];
 
     // Relacionamentos
+    public function owner()
+    {
+        return $this->belongsTo(User::class, 'owner_id');
+    }
+
     public function users(): HasMany
     {
         return $this->hasMany(User::class);

@@ -13,6 +13,16 @@ Route::get('/', function () {
     ]);
 });
 
+// Rotas para Super Admin (fora do middleware company.access)
+Route::middleware([
+    'auth:sanctum',
+    config('jetstream.auth_session'),
+    'verified',
+])->prefix('admin')->name('admin.')->group(function () {
+    // Empresas
+    Route::resource('companies', \App\Http\Controllers\CompanyController::class);
+});
+
 Route::middleware([
     'auth:sanctum',
     config('jetstream.auth_session'),
@@ -31,6 +41,10 @@ Route::middleware([
     // Conversas
     Route::resource('conversations', \App\Http\Controllers\ConversationController::class)->only(['index', 'show']);
     Route::post('/conversations/{conversation}/messages', [\App\Http\Controllers\MessageController::class, 'store'])->name('conversations.messages.store');
+
+    // Usuários (apenas para donos de empresa)
+    Route::resource('users', \App\Http\Controllers\UserController::class)->only(['index', 'store', 'show', 'update', 'destroy']);
+    Route::patch('/users/{user}/status', [\App\Http\Controllers\UserController::class, 'updateStatus'])->name('users.update-status');
 
     // Verificação de autenticação
     Route::get('/auth/check', function () {

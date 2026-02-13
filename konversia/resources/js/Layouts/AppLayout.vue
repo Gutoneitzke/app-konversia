@@ -63,10 +63,16 @@ const logout = () => {
                                 <NavLink :href="route('dashboard')" :active="route().current('dashboard')">
                                     Dashboard
                                 </NavLink>
-                                <NavLink :href="route('whatsapp-numbers.index')" :active="route().current('whatsapp-numbers.*')">
+                                <NavLink v-if="$page.props.auth.user.role === 'super_admin'" :href="route('admin.companies.index')" :active="route().current('admin.companies.*')">
+                                    Empresas
+                                </NavLink>
+                                <NavLink v-if="$page.props.auth.user.role === 'company_owner'" :href="route('users.index')" :active="route().current('users.*')">
+                                    Funcionários
+                                </NavLink>
+                                <NavLink v-if="$page.props.auth.user.role === 'company_owner'" :href="route('whatsapp-numbers.index')" :active="route().current('whatsapp-numbers.*')">
                                     Números WhatsApp
                                 </NavLink>
-                                <NavLink :href="route('conversations.index')" :active="route().current('conversations.*')">
+                                <NavLink v-if="$page.props.auth.user.role !== 'super_admin'" :href="route('conversations.index')" :active="route().current('conversations.*')">
                                     Conversas
                                 </NavLink>
                             </div>
@@ -212,10 +218,16 @@ const logout = () => {
                         <ResponsiveNavLink :href="route('dashboard')" :active="route().current('dashboard')">
                             Dashboard
                         </ResponsiveNavLink>
-                        <ResponsiveNavLink :href="route('whatsapp-numbers.index')" :active="route().current('whatsapp-numbers.*')">
+                        <ResponsiveNavLink v-if="$page.props.auth.user.role === 'super_admin'" :href="route('admin.companies.index')" :active="route().current('admin.companies.*')">
+                            Empresas
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink v-if="$page.props.auth.user.role === 'company_owner'" :href="route('users.index')" :active="route().current('users.*')">
+                            Funcionários
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink v-if="$page.props.auth.user.role === 'company_owner'" :href="route('whatsapp-numbers.index')" :active="route().current('whatsapp-numbers.*')">
                             Números WhatsApp
                         </ResponsiveNavLink>
-                        <ResponsiveNavLink :href="route('conversations.index')" :active="route().current('conversations.*')">
+                        <ResponsiveNavLink v-if="$page.props.auth.user.role !== 'super_admin'" :href="route('conversations.index')" :active="route().current('conversations.*')">
                             Conversas
                         </ResponsiveNavLink>
                     </div>
