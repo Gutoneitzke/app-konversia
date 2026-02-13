@@ -1,20 +1,12 @@
 package main
 
 import (
-	"fmt"
 	"konversia-whatsapp-service/internal/controller"
+	"os"
 
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
-	"go.mau.fi/whatsmeow/types/events"
 )
-
-func eventHandler(evt interface{}) {
-	switch v := evt.(type) {
-	case *events.Message:
-		fmt.Println("Received a message!", v.Message.GetConversation())
-	}
-}
 
 func main() {
 	e := echo.New()
@@ -29,7 +21,12 @@ func main() {
 	wa.DELETE("", ctrl.Destroy)
 	wa.POST("/message", ctrl.SendMessage)
 
-	if err := e.Start(":8080"); err != nil {
-		panic(err)
+	if address, ok := os.LookupEnv("ADDRESS"); ok {
+		if err := e.Start(address); err != nil {
+			panic(err)
+		}
+	} else {
+		panic("ADDRESS env variable is required")
 	}
+
 }
