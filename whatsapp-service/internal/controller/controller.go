@@ -22,8 +22,6 @@ import (
 	waLog "go.mau.fi/whatsmeow/util/log"
 )
 
-var webhookURL string
-
 type Controller struct {
 	devices *sqlstore.Container
 	clients *service.ClientStore
@@ -188,8 +186,9 @@ func NotifyWebhook(id string, data any) {
 
 	log.Printf("Notifying webhook %+v\n", event)
 
+	webhookURL := os.Getenv("WEBHOOK_URL")
 	if webhookURL == "" {
-		return
+		panic("WEBHOOK_URL env variable is required")
 	}
 
 	var body bytes.Buffer
