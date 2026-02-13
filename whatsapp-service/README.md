@@ -2,15 +2,17 @@
 
 ## Usage of
 
+### Create `.env` file
+
+```shell
+cp .env.example .env
+```
+
+### Run the services
+
 ```shell
 docker compose up
 ```
-
-### Available args
-
-- `-address` `string` Address to listen on (default `":8080"`)
-- `-webhook` `string` Webhook URL
-- `--help` Show help
 
 ## Endpoints
 
