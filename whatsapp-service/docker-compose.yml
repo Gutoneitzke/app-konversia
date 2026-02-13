@@ -1,0 +1,18 @@
+services:
+  whatsapp-service:
+    build: .
+    restart: on-failure
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: "postgresql://postgres:secret@postgres-database:5432/whatsapp?sslmode=disable"
+    depends_on:
+      - postgres-database
+  postgres-database:
+    image: postgres:18.2-alpine
+    restart: on-failure
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: "secret"
+      POSTGRES_DB: "whatsapp"
