@@ -21,12 +21,12 @@ func main() {
 	wa.DELETE("", ctrl.Destroy)
 	wa.POST("/message", ctrl.SendMessage)
 
-	if address, ok := os.LookupEnv("ADDRESS"); ok {
-		if err := e.Start(address); err != nil {
-			panic(err)
-		}
-	} else {
+	address := os.Getenv("ADDRESS")
+	if address == "" {
 		panic("ADDRESS env variable is required")
 	}
 
+	if err := e.Start(address); err != nil {
+		panic(err)
+	}
 }
