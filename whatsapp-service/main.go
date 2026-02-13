@@ -6,7 +6,6 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
-	_ "github.com/mattn/go-sqlite3"
 	"go.mau.fi/whatsmeow/types/events"
 )
 

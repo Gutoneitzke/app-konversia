@@ -9,11 +9,13 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"reflect"
 	"strings"
 	"time"
 
 	"github.com/labstack/echo/v5"
+	_ "github.com/lib/pq"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/store/sqlstore"
@@ -34,7 +36,7 @@ func NewController() *Controller {
 	defer cancel()
 
 	dbLog := waLog.Stdout("Database", "INFO", false)
-	container, err := sqlstore.New(ctx, "sqlite3", "file:whatsapp.db?_foreign_keys=on", dbLog)
+	container, err := sqlstore.New(ctx, "postgres", os.Getenv("DATABASE_URL"), dbLog)
 	if err != nil {
 		panic(err)
 	}
