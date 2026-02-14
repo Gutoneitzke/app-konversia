@@ -1,4 +1,4 @@
-# Regras do Projeto Konversia — WhatsApp SaaS (Laravel + Inertia + Baileys)
+# Regras do Projeto Konversia — WhatsApp SaaS (Laravel + Inertia + whatsmeow)
 
 Este projeto é um SaaS B2B de atendimento via WhatsApp.
 O foco é estabilidade, simplicidade e entrega rápida.
@@ -12,10 +12,10 @@ Estas regras DEVEM ser respeitadas em todo código gerado.
 - Backend: Laravel (versão mais recente)
 - Autenticação: Jetstream
 - Frontend: Vue 3 + Inertia
-- Banco de dados: MySQL
+- Banco de dados: MySQL (Laravel) + PostgreSQL (WhatsApp Service)
 - Filas: Laravel Queue
 - Tempo real: Polling (NÃO usar WebSockets)
-- Integração WhatsApp: Microserviço Node.js usando Baileys
+- Integração WhatsApp: Microserviço Go usando whatsmeow
 
 NÃO introduzir:
 - React
@@ -24,21 +24,23 @@ NÃO introduzir:
 - WebSockets
 - Gerenciadores de estado adicionais
 - Bibliotecas experimentais
+- Node.js/Baileys (substituído por Go/whatsmeow)
 
 ---
 
 ## 2. PRINCÍPIOS DE ARQUITETURA
 
 - Laravel é a fonte da verdade do sistema.
-- O serviço Node.js é responsável SOMENTE pela conexão com o WhatsApp.
-- Regras de negócio NUNCA ficam no Node.
-- O Node não deve conhecer filas, usuários ou planos.
-- A comunicação entre Laravel e Node ocorre via HTTP ou filas.
+- O serviço Go (whatsapp-service) é responsável SOMENTE pela conexão com o WhatsApp.
+- Regras de negócio NUNCA ficam no Go.
+- O Go não deve conhecer filas, usuários ou planos.
+- A comunicação entre Laravel e Go ocorre via webhooks HTTP.
 
 NUNCA:
 - Conectar Laravel diretamente ao WhatsApp
 - Misturar lógica de WhatsApp dentro de Controllers do Laravel
-- Colocar regra de negócio no serviço Node
+- Colocar regra de negócio no serviço Go
+- Usar filas para comunicação com o serviço WhatsApp
 
 ---
 
@@ -87,19 +89,44 @@ NÃO:
 
 ---
 
-## 6. REGRAS DE WHATSAPP (BAILEYS)
+## 6. REGRAS DE WHATSAPP (WHATSMEOW)
 
-- A conexão com o WhatsApp existe SOMENTE no Node.js.
+- A conexão com o WhatsApp existe SOMENTE no Go (whatsapp-service).
 - Uma sessão de WhatsApp por empresa.
-- Sessões devem ser persistidas em disco.
+- Sessões são persistidas em PostgreSQL via whatsmeow.
 - Reconexão automática é obrigatória.
-- Todas as mensagens recebidas devem ser enviadas ao Laravel.
+- Todas as mensagens e eventos são enviados ao Laravel via webhooks.
 - O Laravel decide como tratar mensagens, filas e atendimentos.
 
 NÃO:
-- Gerenciar filas no Node
-- Atribuir atendimentos no Node
-- Salvar dados de negócio no Node
+- Gerenciar filas no Go
+- Atribuir atendimentos no Go
+- Salvar dados de negócio no Go
+- Misturar responsabilidades entre Laravel e Go
+
+---
+
+## 6.1. SERVIÇO WHATSAPP (GO)
+
+- Framework: Echo v5
+- Biblioteca WhatsApp: whatsmeow
+- Persistência: PostgreSQL
+- Comunicação: Webhooks HTTP para Laravel
+- API: RESTful simples com header X-Number-Id
+- Gerenciamento de estado: In-memory com mutex para concorrência
+
+ENDPOINTS:
+- POST /number: Criar conexão (QR Code)
+- GET /number: Status da conexão
+- DELETE /number: Desconectar
+- POST /number/message: Enviar mensagem
+
+REGRAS:
+- Um cliente whatsmeow por empresa
+- Restauração automática na inicialização
+- Event handlers notificam Laravel via webhook
+- Tratamento de erros deve ser robusto
+- Logs devem ser informativos
 
 ---
 
@@ -130,7 +157,17 @@ Se algo não estiver claramente solicitado, NÃO implementar.
 
 ---
 
-## 9. COMPORTAMENTO DA IA
+## 9. DESENVOLVIMENTO E DEPLOYMENT
+
+- Laravel: Desenvolvimento local com `php artisan serve`
+- WhatsApp Service: Docker Compose para desenvolvimento
+- Ambiente de produção: Docker containers separados
+- Comunicação: Webhooks configurados via variáveis de ambiente
+- Monitoramento: Logs em stdout/stderr de ambos os serviços
+
+---
+
+## 10. COMPORTAMENTO DA IA
 
 Ao gerar código:
 - Respeitar estas regras rigorosamente.
@@ -138,5 +175,6 @@ Ao gerar código:
 - Não assumir requisitos inexistentes.
 - Não inventar funcionalidades.
 - Perguntar antes de qualquer decisão fora do padrão.
+- Considerar tanto Laravel quanto Go quando relevante.
 
 Se alguma solicitação conflitar com estas regras, PERGUNTAR antes de prosseguir.
