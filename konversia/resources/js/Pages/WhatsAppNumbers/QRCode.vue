@@ -19,9 +19,14 @@ const checkStatus = () => {
     checkingStatus.value = true;
     axios.get(route('whatsapp-numbers.status', props.whatsappNumber.api_key))
         .then(response => {
-            if (response.data.status === 'connected') {
+            const data = response.data;
+            if (data && data.IsConnected && data.IsLoggedIn) {
+                // WhatsApp conectado com sucesso
                 router.visit(route('whatsapp-numbers.index'));
             }
+        })
+        .catch(error => {
+            console.error('Erro ao verificar status:', error);
         })
         .finally(() => {
             checkingStatus.value = false;
@@ -95,7 +100,7 @@ onUnmounted(() => {
 
                             <div v-if="currentQR" class="flex justify-center mb-8">
                                 <div class="relative p-4 bg-white rounded-2xl shadow-lg border border-slate-200">
-                                    <img :src="currentQR" alt="QR Code" class="w-64 h-64 rounded-xl" />
+                                    <img :src="`https://quickchart.io/qr?text=${encodeURIComponent(currentQR)}&size=300&margin=4&bgcolor=white&color=black&format=png`" alt="QR Code" class="w-64 h-64 rounded-xl" />
                                     <div class="absolute inset-0 bg-gradient-to-r from-emerald-400/10 via-transparent to-cyan-400/10 rounded-2xl"></div>
                                 </div>
                             </div>

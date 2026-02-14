@@ -22,7 +22,7 @@ class WhatsAppNumber extends Model
         'nickname',
         'description',
         'status',
-        'api_key',
+        'jid',
         'settings',
         'last_connected_at',
         'last_activity_at',
@@ -46,8 +46,8 @@ class WhatsAppNumber extends Model
         parent::boot();
 
         static::creating(function ($model) {
-            if (empty($model->api_key)) {
-                $model->api_key = Str::uuid()->toString();
+            if (empty($model->jid)) {
+                $model->jid = Str::uuid()->toString();
             }
         });
     }
@@ -246,6 +246,6 @@ class WhatsAppNumber extends Model
 
     public function getRouteKeyName()
     {
-        return 'api_key';
+        return 'jid';
     }
 }

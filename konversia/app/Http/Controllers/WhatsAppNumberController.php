@@ -56,6 +56,23 @@ class WhatsAppNumberController extends Controller
 
         $qrCode = $this->whatsappService->getQRCode($whatsappNumber);
 
+        \Log::info('Carregando página QR', [
+            'whatsapp_number_id' => $whatsappNumber->id,
+            'has_qr' => !empty($qrCode),
+            'qr_length' => $qrCode ? strlen($qrCode) : 0,
+            'session_count' => $whatsappNumber->sessions()->count(),
+            'active_session' => $whatsappNumber->activeSession ? 'exists' : 'none'
+        ]);
+
+        Log::info('Carregando página QR', [
+            'whatsapp_number_id' => $whatsappNumber->id,
+            'has_qr' => !empty($qrCode),
+            'qr_length' => $qrCode ? strlen($qrCode) : 0,
+            'session_count' => $whatsappNumber->sessions()->count(),
+            'active_session' => $whatsappNumber->activeSession ? 'exists' : 'none',
+            'jid' => $whatsappNumber->jid
+        ]);
+
         return Inertia::render('WhatsAppNumbers/QRCode', [
             'whatsappNumber' => $whatsappNumber,
             'qrCode' => $qrCode,
@@ -81,7 +98,8 @@ class WhatsAppNumberController extends Controller
         $success = $this->whatsappService->connect($whatsappNumber);
 
         if ($success) {
-            return redirect()->back()->with('success', 'Conexão iniciada. Aguarde o QR Code.');
+            return redirect()->route('whatsapp-numbers.qr', $whatsappNumber)
+                ->with('success', 'Conexão iniciada. Aguarde o QR Code aparecer.');
         }
 
         return redirect()->back()->with('error', 'Erro ao iniciar conexão.');

@@ -203,6 +203,8 @@ func NotifyWebhook(id string, data any) {
 		return
 	}
 
+	req.Header.Set("Content-Type", "application/json")
+
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Println("error sending request", err.Error())

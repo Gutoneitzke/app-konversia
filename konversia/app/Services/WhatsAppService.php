@@ -15,11 +15,11 @@ class WhatsAppService
 
     public function __construct()
     {
-        $this->serviceUrl = config('services.whatsapp.service_url', env('WHATSAPP_SERVICE_URL', 'http://localhost:3001'));
+        $this->serviceUrl = config('services.whatsapp.service_url', env('WHATSAPP_SERVICE_URL', 'http://localhost:8080'));
     }
 
     /**
-     * Conectar número WhatsApp
+     * Conectar número WhatsApp (serviço Go)
      */
     public function connect(WhatsAppNumber $whatsappNumber): bool
     {
@@ -41,14 +41,35 @@ class WhatsAppService
                 $session->update(['session_id' => $whatsappNumber->api_key]);
             }
 
-            // Chamar serviço Node.js
-            $response = Http::post("{$this->serviceUrl}/connect", [
-                'session_id' => $session->session_id
-            ]);
+            // Chamar serviço Go - POST /number com X-Number-Id header
+            $response = Http::withHeaders([
+                'X-Number-Id' => $whatsappNumber->jid
+            ])->post("{$this->serviceUrl}/number");
 
             if ($response->successful()) {
+                $data = $response->json();
+                $jid = $data['ID'] ?? null;
+
+                // Atualizar JID real para simplificar futuras associações
+                if ($jid) {
+                    $whatsappNumber->update(['jid' => $jid]);
+                }
+
                 $whatsappNumber->updateStatus('connecting');
-                $session->update(['status' => 'connecting']);
+                $session->update([
+                    'session_id' => $jid ?: $whatsappNumber->jid, // Atualizar session_id para o JID
+                    'status' => 'connecting',
+                    'metadata' => array_merge($session->metadata ?? [], [
+                        'service_id' => $jid
+                    ])
+                ]);
+
+                Log::info('WhatsApp conectado - JID atualizado', [
+                    'whatsapp_number_id' => $whatsappNumber->id,
+                    'jid' => $jid,
+                    'session_id' => $session->id
+                ]);
+
                 return true;
             }
 
@@ -66,7 +87,7 @@ class WhatsAppService
     }
 
     /**
-     * Desconectar número WhatsApp
+     * Desconectar número WhatsApp (serviço Go)
      */
     public function disconnect(WhatsAppNumber $whatsappNumber): bool
     {
@@ -77,9 +98,10 @@ class WhatsAppService
                 return false;
             }
 
-            $response = Http::post("{$this->serviceUrl}/disconnect", [
-                'session_id' => $session->session_id
-            ]);
+            // Chamar serviço Go - DELETE /number com X-Number-Id header (usa o JID)
+            $response = Http::withHeaders([
+                'X-Number-Id' => $whatsappNumber->jid
+            ])->delete("{$this->serviceUrl}/number");
 
             if ($response->successful()) {
                 $whatsappNumber->updateStatus('inactive');
@@ -100,7 +122,7 @@ class WhatsAppService
     }
 
     /**
-     * Enviar mensagem via WhatsApp
+     * Enviar mensagem via WhatsApp (serviço Go)
      */
     public function sendMessage(Message $message, string $to): void
     {
@@ -112,12 +134,12 @@ class WhatsAppService
             return;
         }
 
-        // Enviar via Job
-        SendWhatsAppMessage::dispatch($message, $session->session_id, $to);
+        // Enviar via Job usando o WhatsAppNumber
+        SendWhatsAppMessage::dispatch($message, $session->whatsappNumber, $to);
     }
 
     /**
-     * Verificar status da conexão
+     * Verificar status da conexão (serviço Go)
      */
     public function checkStatus(WhatsAppNumber $whatsappNumber): ?array
     {
@@ -131,21 +153,31 @@ class WhatsAppService
                 return null;
             }
 
-            $response = Http::get("{$this->serviceUrl}/status/{$session->session_id}");
+            // Chamar serviço Go - GET /number com X-Number-Id header (usa o JID)
+            $response = Http::withHeaders([
+                'X-Number-Id' => $whatsappNumber->jid
+            ])->get("{$this->serviceUrl}/number");
 
             if ($response->successful()) {
                 $data = $response->json();
 
-                if (isset($data['status']) && $data['status'] === 'connected') {
+                // Mapear status do serviço Go para status interno
+                $isConnected = $data['IsConnected'] ?? false;
+                $isLoggedIn = $data['IsLoggedIn'] ?? false;
+
+                if ($isConnected && $isLoggedIn) {
                     if (!$whatsappNumber->isConnected()) {
                         $whatsappNumber->updateStatus('connected');
+                        if (!$session->connected_at) {
+                            $session->update(['connected_at' => now()]);
+                        }
                     }
 
                     if ($session->status !== 'connected') {
                         $session->update(['status' => 'connected']);
                     }
-                } elseif (isset($data['status']) && $data['status'] === 'disconnected') {
-                    // Se o serviço diz que está desconectado, mas o banco diz que está conectado/conectando
+                } elseif (!$isConnected || !$isLoggedIn) {
+                    // Se o serviço diz que não está conectado/logado
                     if ($whatsappNumber->isConnected() || $whatsappNumber->status === 'connecting') {
                         $whatsappNumber->updateStatus('inactive');
                     }
@@ -156,6 +188,12 @@ class WhatsAppService
 
                 return $data;
             }
+
+            Log::warning('Falha ao verificar status WhatsApp', [
+                'whatsapp_number_id' => $whatsappNumber->id,
+                'response_status' => $response->status(),
+                'response_body' => $response->body()
+            ]);
 
             return null;
 
@@ -170,22 +208,88 @@ class WhatsAppService
     }
 
     /**
-     * Obter QR Code da sessão
+     * Obter QR Code da sessão (recebido via webhook)
      */
     public function getQRCode(WhatsAppNumber $whatsappNumber): ?string
     {
-        // Buscar sessão mais recente com QR code (pode estar connecting ou connected)
+        Log::info('Buscando QR code', [
+            'whatsapp_number_id' => $whatsappNumber->id,
+            'session_count' => $whatsappNumber->sessions()->count()
+        ]);
+
+        // Buscar sessão mais recente com QR code (qualquer status)
         $session = WhatsAppSession::where('whatsapp_number_id', $whatsappNumber->id)
-            ->whereIn('status', ['connecting', 'connected'])
             ->whereNotNull('metadata->qr_code')
+            ->where('metadata->qr_code', '!=', '')
             ->latest('created_at')
             ->first();
 
-        if (!$session || !isset($session->metadata['qr_code'])) {
+        if (!$session) {
+            Log::info('Nenhuma sessão com QR encontrada', [
+                'whatsapp_number_id' => $whatsappNumber->id
+            ]);
             return null;
         }
 
-        return $session->metadata['qr_code'];
+        $qrCode = $session->metadata['qr_code'] ?? null;
+
+        Log::info('QR code encontrado', [
+            'session_id' => $session->id,
+            'session_status' => $session->status,
+            'has_qr' => !empty($qrCode),
+            'qr_length' => $qrCode ? strlen($qrCode) : 0
+        ]);
+
+        return $qrCode;
+    }
+
+    /**
+     * Salvar QR Code recebido via webhook
+     */
+    public function saveQRCode(string $numberId, string $qrCode): bool
+    {
+        try {
+            // Agora é simples - o numberId é o api_key que contém o JID correto
+            $session = WhatsAppSession::where('session_id', $numberId)->first();
+
+            if (!$session) {
+                Log::warning('Sessão não encontrada para QR code', [
+                    'number_id' => $numberId,
+                    'total_sessions' => WhatsAppSession::count(),
+                    'all_session_ids' => WhatsAppSession::pluck('session_id')->toArray()
+                ]);
+                return false;
+            }
+
+            Log::info('Salvando QR code', [
+                'number_id' => $numberId,
+                'session_id' => $session->id,
+                'qr_length' => strlen($qrCode),
+                'session_status' => $session->status
+            ]);
+
+            $session->update([
+                'status' => 'connecting',
+                'metadata' => array_merge($session->metadata ?? [], [
+                    'qr_code' => $qrCode,
+                    'qr_received_at' => now()->toIso8601String()
+                ])
+            ]);
+
+            Log::info('QR code salvo com sucesso', [
+                'session_id' => $session->id,
+                'whatsapp_number_id' => $session->whatsapp_number_id
+            ]);
+
+            return true;
+
+        } catch (\Exception $e) {
+            Log::error('Erro ao salvar QR code', [
+                'number_id' => $numberId,
+                'error' => $e->getMessage()
+            ]);
+            return false;
+        }
     }
 }
 

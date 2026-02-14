@@ -8,9 +8,7 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
-// Rotas WhatsApp (sem autenticação - comunicação interna com Node.js)
+// Rotas WhatsApp (sem autenticação - comunicação interna com serviço Go)
 Route::prefix('whatsapp')->group(function () {
-    Route::post('/qr', [WhatsAppController::class, 'receiveQR']);
-    Route::post('/message', [WhatsAppController::class, 'receiveMessage']);
-    Route::post('/status', [WhatsAppController::class, 'updateStatus']);
+    Route::post('/event', [WhatsAppController::class, 'receiveEvent']);
 });
