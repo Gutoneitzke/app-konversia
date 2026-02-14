@@ -31,14 +31,14 @@ class WhatsAppService
                     'whatsapp_number_id' => $whatsappNumber->id,
                 ],
                 [
-                    'session_id' => $whatsappNumber->api_key,
+                    'session_id' => $whatsappNumber->jid,
                     'status' => 'disconnected',
                 ]
             );
 
             // Atualizar session_id se necessário
-            if ($session->session_id !== $whatsappNumber->api_key) {
-                $session->update(['session_id' => $whatsappNumber->api_key]);
+            if ($session->session_id !== $whatsappNumber->jid) {
+                $session->update(['session_id' => $whatsappNumber->jid]);
             }
 
             // Chamar serviço Go - POST /number com X-Number-Id header
@@ -249,7 +249,7 @@ class WhatsAppService
     public function saveQRCode(string $numberId, string $qrCode): bool
     {
         try {
-            // Agora é simples - o numberId é o api_key que contém o JID correto
+            // Agora é simples - o numberId é o jid que contém o JID correto
             $session = WhatsAppSession::where('session_id', $numberId)->first();
 
             if (!$session) {

@@ -17,7 +17,7 @@ let qrInterval = null;
 
 const checkStatus = () => {
     checkingStatus.value = true;
-    axios.get(route('whatsapp-numbers.status', props.whatsappNumber.api_key))
+    axios.get(route('whatsapp-numbers.status', props.whatsappNumber.jid))
         .then(response => {
             const data = response.data;
             if (data && data.IsConnected && data.IsLoggedIn) {
@@ -49,7 +49,7 @@ const refreshQR = () => {
 onMounted(() => {
     // Verificar status a cada 3 segundos
     statusInterval = setInterval(checkStatus, 3000);
-    
+
     // Atualizar QR a cada 5 segundos (caso expire)
     qrInterval = setInterval(refreshQR, 5000);
 });

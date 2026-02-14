@@ -176,7 +176,7 @@ class WhatsAppNumbersSeeder extends Seeder
                     'phone_number' => $numberData['phone_number']
                 ],
                 array_merge($numberData, [
-                    'api_key' => \Illuminate\Support\Str::uuid()->toString(),
+                    'jid' => \Illuminate\Support\Str::uuid()->toString(),
                 ])
             );
             $createdNumbers[] = $number;

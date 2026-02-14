@@ -1,5 +1,10 @@
 <?php
 
+use App\Http\Controllers\ConversationController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\MessageController;
+use App\Http\Controllers\UserController;
+use App\Http\Controllers\WhatsAppNumberController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -29,22 +34,22 @@ Route::middleware([
     'verified',
     'company.access',
 ])->group(function () {
-    Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
-    // Números WhatsApp
-    Route::resource('whatsapp-numbers', \App\Http\Controllers\WhatsAppNumberController::class)->only(['index']);
-    Route::get('/whatsapp-numbers/{whatsappNumber}/qr', [\App\Http\Controllers\WhatsAppNumberController::class, 'showQR'])->name('whatsapp-numbers.qr');
-    Route::post('/whatsapp-numbers/{whatsappNumber}/connect', [\App\Http\Controllers\WhatsAppNumberController::class, 'connect'])->name('whatsapp-numbers.connect');
-    Route::post('/whatsapp-numbers/{whatsappNumber}/disconnect', [\App\Http\Controllers\WhatsAppNumberController::class, 'disconnect'])->name('whatsapp-numbers.disconnect');
-    Route::get('/whatsapp-numbers/{whatsappNumber}/status', [\App\Http\Controllers\WhatsAppNumberController::class, 'checkStatus'])->name('whatsapp-numbers.status');
-
+    Route::prefix('whatsapp-numbers')->name('whatsapp-numbers.')->controller(WhatsAppNumberController::class)->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::get('{whatsappNumber}/qr', 'showQR')->name('qr');
+        Route::post('{whatsappNumber}/connect', 'connect')->name('connect');
+        Route::post('{whatsappNumber}/disconnect', 'disconnect')->name('disconnect');
+        Route::get('{whatsappNumber}/status', 'checkStatus')->name('status');
+    });
     // Conversas
-    Route::resource('conversations', \App\Http\Controllers\ConversationController::class)->only(['index', 'show']);
-    Route::post('/conversations/{conversation}/messages', [\App\Http\Controllers\MessageController::class, 'store'])->name('conversations.messages.store');
+    Route::resource('conversations', ConversationController::class)->only(['index', 'show']);
+    Route::post('/conversations/{conversation}/messages', [MessageController::class, 'store'])->name('conversations.messages.store');
 
     // Usuários (apenas para donos de empresa)
-    Route::resource('users', \App\Http\Controllers\UserController::class)->only(['index', 'store', 'show', 'update', 'destroy']);
-    Route::patch('/users/{user}/status', [\App\Http\Controllers\UserController::class, 'updateStatus'])->name('users.update-status');
+    Route::resource('users', UserController::class)->only(['index', 'store', 'show', 'update', 'destroy']);
+    Route::patch('/users/{user}/status', [UserController::class, 'updateStatus'])->name('users.update-status');
 
     // Verificação de autenticação
     Route::get('/auth/check', function () {

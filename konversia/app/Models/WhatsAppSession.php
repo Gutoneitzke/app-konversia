@@ -123,6 +123,6 @@ class WhatsAppSession extends Model
 
     public function getNumberApiKey(): ?string
     {
-        return $this->whatsappNumber?->api_key;
+        return $this->whatsappNumber?->jid;
     }
 }

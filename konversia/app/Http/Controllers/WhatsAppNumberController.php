@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\ConnectWhatsAppJob;
 use App\Models\WhatsAppNumber;
+use App\Models\WhatsAppSession;
 use App\Services\WhatsAppService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
 class WhatsAppNumberController extends Controller
@@ -49,29 +52,11 @@ class WhatsAppNumberController extends Controller
     {
         $user = $request->user();
 
-        // Verificar permissão
         if (!$user->isSuperAdmin() && $whatsappNumber->company_id !== $user->company_id) {
             abort(403);
         }
 
         $qrCode = $this->whatsappService->getQRCode($whatsappNumber);
-
-        \Log::info('Carregando página QR', [
-            'whatsapp_number_id' => $whatsappNumber->id,
-            'has_qr' => !empty($qrCode),
-            'qr_length' => $qrCode ? strlen($qrCode) : 0,
-            'session_count' => $whatsappNumber->sessions()->count(),
-            'active_session' => $whatsappNumber->activeSession ? 'exists' : 'none'
-        ]);
-
-        Log::info('Carregando página QR', [
-            'whatsapp_number_id' => $whatsappNumber->id,
-            'has_qr' => !empty($qrCode),
-            'qr_length' => $qrCode ? strlen($qrCode) : 0,
-            'session_count' => $whatsappNumber->sessions()->count(),
-            'active_session' => $whatsappNumber->activeSession ? 'exists' : 'none',
-            'jid' => $whatsappNumber->jid
-        ]);
 
         return Inertia::render('WhatsAppNumbers/QRCode', [
             'whatsappNumber' => $whatsappNumber,
@@ -95,14 +80,46 @@ class WhatsAppNumberController extends Controller
             abort(403, 'Acesso negado');
         }
 
-        $success = $this->whatsappService->connect($whatsappNumber);
+        try {
+            // Atualizar status para connecting antes de iniciar
+            $whatsappNumber->updateStatus('connecting');
 
-        if ($success) {
+            // Criar/atualizar sessão
+            $session = WhatsAppSession::firstOrCreate(
+                [
+                    'company_id' => $whatsappNumber->company_id,
+                    'whatsapp_number_id' => $whatsappNumber->id,
+                ],
+                [
+                    'session_id' => $whatsappNumber->jid,
+                    'status' => 'connecting',
+                ]
+            );
+
+            if ($session->session_id !== $whatsappNumber->jid) {
+                $session->update(['session_id' => $whatsappNumber->jid]);
+            }
+
+            // Despachar job para fazer a conexão (não bloqueia)
+            ConnectWhatsAppJob::dispatch($whatsappNumber);
+
+            Log::info('Conexão WhatsApp iniciada', [
+                'whatsapp_number_id' => $whatsappNumber->id,
+                'jid' => $whatsappNumber->jid
+            ]);
+
             return redirect()->route('whatsapp-numbers.qr', $whatsappNumber)
                 ->with('success', 'Conexão iniciada. Aguarde o QR Code aparecer.');
-        }
 
-        return redirect()->back()->with('error', 'Erro ao iniciar conexão.');
+        } catch (\Exception $e) {
+            Log::error('Erro ao iniciar conexão WhatsApp', [
+                'whatsapp_number_id' => $whatsappNumber->id,
+                'error' => $e->getMessage()
+            ]);
+
+            $whatsappNumber->updateStatus('error', $e->getMessage());
+            return redirect()->back()->with('error', 'Erro ao iniciar conexão.');
+        }
     }
 
     /**
