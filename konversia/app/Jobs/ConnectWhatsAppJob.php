@@ -38,20 +38,11 @@ class ConnectWhatsAppJob implements ShouldQueue
             ]);
 
             // Chama o serviço WhatsApp com timeout longo
-            $success = $whatsappService->connect($this->whatsappNumber);
+            $whatsappService->connect($this->whatsappNumber);
 
-            if ($success) {
-                Log::info('ConnectWhatsAppJob concluído com sucesso', [
-                    'whatsapp_number_id' => $this->whatsappNumber->id
-                ]);
-            } else {
-                Log::warning('ConnectWhatsAppJob falhou', [
-                    'whatsapp_number_id' => $this->whatsappNumber->id
-                ]);
-
-                $this->whatsappNumber->updateStatus('error', 'Falha na conexão com serviço WhatsApp');
-            }
-
+            Log::info('ConnectWhatsAppJob concluído com sucesso', [
+                'whatsapp_number_id' => $this->whatsappNumber->id
+            ]);
         } catch (\Exception $e) {
             Log::error('Erro no ConnectWhatsAppJob', [
                 'whatsapp_number_id' => $this->whatsappNumber->id,
