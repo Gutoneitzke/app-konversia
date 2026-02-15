@@ -88,7 +88,7 @@ class ConversationController extends Controller
                 ->count(),
         ];
 
-        // Conversa selecionada (se informada)
+        // Conversa selecionada (se informada) - SEM FILTROS para garantir que seja sempre carregada
         $selectedConversation = null;
         if ($request->has('selected') && $request->selected) {
             $selectedConversation = Conversation::where('company_id', $company->id)
@@ -98,7 +98,7 @@ class ConversationController extends Controller
                     'department',
                     'assignedUser',
                     'messages' => function ($query) {
-                        $query->orderBy('sent_at');
+                        $query->orderBy('sent_at'); // TODAS as mensagens, sem limit
                     }
                 ])
                 ->first();
@@ -127,6 +127,33 @@ class ConversationController extends Controller
             ],
             'stats' => $stats,
             'selectedConversation' => $selectedConversation,
+        ]);
+    }
+
+    /**
+     * Buscar apenas mensagens de uma conversa (para polling)
+     */
+    public function getMessages(Conversation $conversation, Request $request)
+    {
+        $user = $request->user();
+
+        // Verificar permissão
+        if ($conversation->company_id !== $user->company_id) {
+            abort(403);
+        }
+
+        // Employee só pode ver conversas dos seus departamentos
+        if ($user->isEmployee() && !$user->belongsToDepartment($conversation->department_id)) {
+            abort(403);
+        }
+
+        $messages = $conversation->messages()
+            ->orderBy('sent_at')
+            ->get();
+
+        return response()->json([
+            'messages' => $messages,
+            'conversation_id' => $conversation->id
         ]);
     }
 

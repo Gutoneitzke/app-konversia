@@ -50,11 +50,28 @@ const selectConversation = (conversation) => {
     const url = new URL(window.location);
     url.searchParams.set('selected', conversation.id);
     window.history.replaceState({}, '', url.toString());
+
+    // Fazer requisição para carregar conversa completa com mensagens
+    router.reload({
+        only: ['selectedConversation'],
+        data: { selected: conversation.id },
+        preserveState: true,
+        preserveScroll: true,
+    });
 };
 
 const selectedConversation = computed(() => {
-    if (!selectedConversationId.value) return null;
-    return props.conversations.data.find(conv => conv.id === selectedConversationId.value) || null;
+    // Primeiro tenta usar a conversa selecionada carregada do backend (com todas as mensagens)
+    if (props.selectedConversation && props.selectedConversation.id === selectedConversationId.value) {
+        return props.selectedConversation;
+    }
+
+    // Fallback: procura na lista de conversas (limitada a 1 mensagem cada)
+    if (selectedConversationId.value) {
+        return props.conversations.data.find(conv => conv.id === selectedConversationId.value) || null;
+    }
+
+    return null;
 });
 
 const getStatusColor = (status) => {

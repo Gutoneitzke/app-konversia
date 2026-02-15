@@ -1,6 +1,6 @@
 <script setup>
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { onMounted, onUnmounted, ref, nextTick } from 'vue';
+import { onMounted, onUnmounted, ref, nextTick, watch } from 'vue';
 
 const props = defineProps({
     conversation: Object,
@@ -17,7 +17,6 @@ const props = defineProps({
 const form = useForm({
     content: '',
 });
-
 const sending = ref(false);
 const messagesContainer = ref(null);
 
@@ -44,23 +43,54 @@ const sendMessage = () => {
     });
 };
 
-let pollingInterval = null;
-
 onMounted(() => {
-    pollingInterval = setInterval(() => {
-        router.reload({
-            only: ['conversation'],
-            preserveState: true,
-            preserveScroll: true,
-        });
-    }, 3000); // 3 segundos
-
     scrollToBottom();
+    startMessagePolling();
 });
 
 onUnmounted(() => {
-    if (pollingInterval) clearInterval(pollingInterval);
+    stopMessagePolling();
 });
+
+// Polling para mensagens
+let messagePollingInterval = null;
+
+const startMessagePolling = () => {
+    if (messagePollingInterval) return;
+
+    messagePollingInterval = setInterval(() => {
+        // Usar Inertia para fazer reload apenas da conversa selecionada
+        router.reload({
+            only: ['selectedConversation'],
+            data: { selected: props.conversation.id },
+            preserveState: true,
+            preserveScroll: true,
+            onSuccess: (page) => {
+                // Atualizar apenas as mensagens se a conversa ainda for a mesma
+                if (page.props.selectedConversation && page.props.selectedConversation.id === props.conversation.id) {
+                    props.conversation.messages = page.props.selectedConversation.messages;
+                }
+            },
+            onError: (errors) => {
+                console.warn('Erro ao buscar mensagens atualizadas:', errors);
+            }
+        });
+    }, 3000); // A cada 3 segundos
+};
+
+const stopMessagePolling = () => {
+    if (messagePollingInterval) {
+        clearInterval(messagePollingInterval);
+        messagePollingInterval = null;
+    }
+};
+
+// Fazer scroll quando mensagens mudarem
+watch(() => props.conversation?.messages, (newMessages, oldMessages) => {
+    if (newMessages && newMessages.length !== (oldMessages?.length || 0)) {
+        nextTick(() => scrollToBottom());
+    }
+}, { deep: true });
 
 const scrollToBottom = () => {
     nextTick(() => {

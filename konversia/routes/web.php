@@ -45,6 +45,7 @@ Route::middleware([
     });
     // Conversas
     Route::resource('conversations', ConversationController::class)->only(['index', 'show']);
+    Route::get('/conversations/{conversation}/messages', [ConversationController::class, 'getMessages'])->name('conversations.messages.index');
     Route::post('/conversations/{conversation}/messages', [MessageController::class, 'store'])->name('conversations.messages.store');
 
     // Usuários (apenas para donos de empresa)
