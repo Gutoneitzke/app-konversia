@@ -143,7 +143,7 @@ onUnmounted(() => {
     <AppLayout title="Conversas">
         <Head title="Conversas" />
 
-        <template #header>
+        <!-- <template #header>
             <div class="flex items-center space-x-4">
                 <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 shadow-lg">
                     <svg class="h-7 w-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -155,12 +155,12 @@ onUnmounted(() => {
                     <p class="text-slate-600 mt-1">Gerencie todas as suas conversas</p>
                 </div>
             </div>
-        </template>
+        </template> -->
 
-        <div class="py-16">
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+        <div class="">
+            <div class="">
                 <!-- Layout Principal WhatsApp-style -->
-                <div class="bg-white shadow rounded-lg overflow-hidden" style="height: 600px;">
+                <div class="bg-white shadow rounded-lg overflow-hidden" style="height: 92.4vh;">
                     <div class="flex h-full">
                         <!-- Sidebar - Lista de Conversas -->
                         <div class="w-1/3 bg-gray-50 border-r border-gray-200 flex flex-col">

@@ -17,6 +17,7 @@ const props = defineProps({
 const form = useForm({
     content: '',
 });
+
 const sending = ref(false);
 const messagesContainer = ref(null);
 
@@ -132,9 +133,9 @@ const getStatusText = (status) => {
 </script>
 
 <template>
-    <div class="flex flex-col h-full">
+    <div class="flex flex-col h-full bg-white">
         <!-- Header da Conversa -->
-        <div v-if="showHeader" class="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-4">
+        <div v-if="showHeader" class="flex-shrink-0 border-b border-gray-200 px-6 py-4">
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-4">
                     <Link v-if="showBackButton" :href="route('conversations.index')" class="text-gray-500 hover:text-gray-700 lg:hidden">
@@ -209,7 +210,7 @@ const getStatusText = (status) => {
         </div>
 
         <!-- Área de Envio -->
-        <div class="flex-shrink-0 bg-white border-t border-gray-200 px-6 py-4">
+        <div class="flex-shrink-0 bg-white border-t border-gray-200 px-6 py-4 border-b border-gray-200">
             <div class="flex items-center gap-3">
                 <div class="flex-1">
                     <input
