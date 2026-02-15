@@ -102,6 +102,14 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
                     $this->processMessageEvent($session, $whatsappNumber);
                     break;
 
+                case 'PushName': // Mudança de nome do contato
+                    $this->processPushNameEvent($session, $whatsappNumber);
+                    break;
+
+                case 'Receipt': // Confirmação de entrega/leitura
+                    $this->processReceiptEvent($session, $whatsappNumber);
+                    break;
+
                 default:
                     Log::info('Evento WhatsApp não mapeado', [
                         'event_type' => $this->eventType,
@@ -341,9 +349,26 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
                 $content = $messageData['documentMessage']['fileName'] ?? '[Documento]';
                 $messageType = 'document';
                 $mediaMetadata = $messageData['documentMessage'];
+            } elseif (isset($messageData['stickerMessage'])) {
+                $content = '[Sticker]';
+                $messageType = 'sticker';
+                $mediaMetadata = $messageData['stickerMessage'];
+            } elseif (isset($messageData['locationMessage'])) {
+                $content = '[Localização]';
+                $messageType = 'location';
+                $mediaMetadata = $messageData['locationMessage'];
+            } elseif (isset($messageData['contactMessage'])) {
+                $content = '[Contato]';
+                $messageType = 'contact';
+                $mediaMetadata = $messageData['contactMessage'];
+            } elseif (isset($messageData['extendedTextMessage'])) {
+                // Link preview ou texto estendido
+                $content = $messageData['extendedTextMessage']['text'] ?? $messageData['extendedTextMessage']['description'] ?? '[Link]';
+                $messageType = 'link';
+                $mediaMetadata = $messageData['extendedTextMessage'];
             } else {
                 $content = '[Mensagem não suportada]';
-                $messageType = 'unknown';
+                $messageType = 'text'; // Usar 'text' para mensagens não suportadas
             }
 
             // Garantir que estamos marcados como conectados
@@ -380,6 +405,153 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
 
         } catch (\Exception $e) {
             Log::error('Erro ao processar mensagem WhatsApp', [
+                'session_id' => $session->id,
+                'whatsapp_number_id' => $whatsappNumber->id,
+                'error' => $e->getMessage(),
+                'event_data' => $this->eventData
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Processar evento de mudança de nome do contato
+     */
+    protected function processPushNameEvent(WhatsAppSession $session, WhatsAppNumber $whatsappNumber): void
+    {
+        try {
+            $jid = $this->eventData['JID'] ?? null;
+            $oldPushName = $this->eventData['OldPushName'] ?? null;
+            $newPushName = $this->eventData['NewPushName'] ?? null;
+
+            if (!$jid || !$newPushName) {
+                Log::warning('Dados insuficientes para processar PushName', [
+                    'event_data' => $this->eventData,
+                    'whatsapp_number_id' => $whatsappNumber->id
+                ]);
+                return;
+            }
+
+            // Buscar contato pelo JID
+            $contact = Contact::where('whatsapp_number_id', $whatsappNumber->id)
+                ->where('jid', $jid)
+                ->first();
+
+            if ($contact) {
+                // Atualizar nome se mudou
+                if ($contact->name !== $newPushName) {
+                    $contact->update(['name' => $newPushName]);
+
+                    Log::info('Nome do contato atualizado via PushName', [
+                        'contact_id' => $contact->id,
+                        'jid' => $jid,
+                        'old_name' => $oldPushName,
+                        'new_name' => $newPushName,
+                        'whatsapp_number_id' => $whatsappNumber->id
+                    ]);
+                } else {
+                    Log::info('PushName recebido mas nome já está atualizado', [
+                        'contact_id' => $contact->id,
+                        'jid' => $jid,
+                        'name' => $newPushName,
+                        'whatsapp_number_id' => $whatsappNumber->id
+                    ]);
+                }
+            } else {
+                Log::info('Contato não encontrado para PushName', [
+                    'jid' => $jid,
+                    'new_name' => $newPushName,
+                    'whatsapp_number_id' => $whatsappNumber->id
+                ]);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Erro ao processar PushName', [
+                'session_id' => $session->id,
+                'whatsapp_number_id' => $whatsappNumber->id,
+                'error' => $e->getMessage(),
+                'event_data' => $this->eventData
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Processar evento de confirmação de entrega/leitura
+     */
+    protected function processReceiptEvent(WhatsAppSession $session, WhatsAppNumber $whatsappNumber): void
+    {
+        try {
+            $messageIds = $this->eventData['MessageIDs'] ?? [];
+            $receiptType = $this->eventData['Type'] ?? null;
+            $timestamp = $this->eventData['Timestamp'] ?? null;
+
+            if (empty($messageIds)) {
+                Log::info('Receipt sem MessageIDs', [
+                    'event_data' => $this->eventData,
+                    'whatsapp_number_id' => $whatsappNumber->id
+                ]);
+                return;
+            }
+
+            // Determinar novo status baseado no tipo do receipt
+            $newStatus = match ($receiptType) {
+                'delivered', 'server' => 'delivered',
+                'read', 'read-self' => 'read',
+                default => null
+            };
+
+            if (!$newStatus) {
+                Log::info('Tipo de receipt não reconhecido', [
+                    'receipt_type' => $receiptType,
+                    'message_ids' => $messageIds,
+                    'whatsapp_number_id' => $whatsappNumber->id
+                ]);
+                return;
+            }
+
+            // Buscar mensagens pelos IDs do WhatsApp
+            $messages = Message::whereIn('whatsapp_message_id', $messageIds)
+                ->where('direction', 'outbound') // Apenas mensagens enviadas
+                ->get();
+
+            $updatedCount = 0;
+            foreach ($messages as $message) {
+                // Atualizar apenas se o status atual for inferior
+                $statusHierarchy = ['sent' => 1, 'delivered' => 2, 'read' => 3];
+                $currentLevel = $statusHierarchy[$message->delivery_status] ?? 0;
+                $newLevel = $statusHierarchy[$newStatus] ?? 0;
+
+                if ($newLevel > $currentLevel) {
+                    $updateData = ['delivery_status' => $newStatus];
+
+                    if ($newStatus === 'delivered' && !$message->delivered_at) {
+                        $updateData['delivered_at'] = $timestamp ? now()->parse($timestamp) : now();
+                    } elseif ($newStatus === 'read' && !$message->read_at) {
+                        $updateData['read_at'] = $timestamp ? now()->parse($timestamp) : now();
+                        // Marcar como entregue também se não estiver
+                        if (!$message->delivered_at) {
+                            $updateData['delivered_at'] = $updateData['read_at'];
+                        }
+                    }
+
+                    $message->update($updateData);
+                    $updatedCount++;
+                }
+            }
+
+            if ($updatedCount > 0) {
+                Log::info('Status de mensagens atualizado via Receipt', [
+                    'receipt_type' => $receiptType,
+                    'new_status' => $newStatus,
+                    'message_ids' => $messageIds,
+                    'updated_count' => $updatedCount,
+                    'whatsapp_number_id' => $whatsappNumber->id
+                ]);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Erro ao processar Receipt', [
                 'session_id' => $session->id,
                 'whatsapp_number_id' => $whatsappNumber->id,
                 'error' => $e->getMessage(),
