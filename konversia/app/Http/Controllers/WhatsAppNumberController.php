@@ -27,7 +27,7 @@ class WhatsAppNumberController extends Controller
         $user = $request->user();
 
         if ($user->isSuperAdmin()) {
-            $numbers = WhatsAppNumber::with(['company', 'activeSession'])
+            $numbers = WhatsAppNumber::with(['company'])
                 ->latest()
                 ->get();
         } else {
@@ -35,7 +35,6 @@ class WhatsAppNumberController extends Controller
                 abort(403, 'Usuário não possui empresa associada');
             }
             $numbers = WhatsAppNumber::where('company_id', $user->company_id)
-                ->with(['activeSession'])
                 ->latest()
                 ->get();
         }

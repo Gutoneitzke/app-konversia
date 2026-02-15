@@ -1,24 +1,28 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import ChatConversation from '@/Components/ChatConversation.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 
 const props = defineProps({
     conversations: Object,
     departments: Array,
     filters: Object,
     stats: Object,
+    selectedConversation: Object, // Conversa selecionada (opcional)
 });
 
 const search = ref(props.filters.search);
 const statusFilter = ref(props.filters.status);
 const departmentFilter = ref(props.filters.department_id);
+const selectedConversationId = ref(props.selectedConversation?.id || null);
 
 const applyFilters = () => {
     router.get(route('conversations.index'), {
         search: search.value,
         status: statusFilter.value,
         department_id: departmentFilter.value,
+        selected: selectedConversationId.value,
     }, {
         preserveState: true,
         preserveScroll: true,
@@ -38,6 +42,19 @@ watch(search, () => {
 
 watch([statusFilter, departmentFilter], () => {
     applyFilters();
+});
+
+const selectConversation = (conversation) => {
+    selectedConversationId.value = conversation.id;
+    // Atualizar URL sem recarregar página
+    const url = new URL(window.location);
+    url.searchParams.set('selected', conversation.id);
+    window.history.replaceState({}, '', url.toString());
+};
+
+const selectedConversation = computed(() => {
+    if (!selectedConversationId.value) return null;
+    return props.conversations.data.find(conv => conv.id === selectedConversationId.value) || null;
 });
 
 const getStatusColor = (status) => {
@@ -60,18 +77,44 @@ const getStatusText = (status) => {
     return texts[status] || status;
 };
 
+const formatLastMessageTime = (timestamp) => {
+    if (!timestamp) return '';
+
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) {
+        return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    } else if (diffDays === 1) {
+        return 'Ontem';
+    } else if (diffDays < 7) {
+        return date.toLocaleDateString('pt-BR', { weekday: 'short' });
+    } else {
+        return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    }
+};
+
 import { onMounted, onUnmounted } from 'vue';
 
 let pollingInterval = null;
 
 onMounted(() => {
+    // Verificar se há ID de conversa na URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const selectedId = urlParams.get('selected');
+    if (selectedId) {
+        selectedConversationId.value = parseInt(selectedId);
+    }
+
     pollingInterval = setInterval(() => {
         router.reload({
             only: ['conversations'],
             preserveState: true,
             preserveScroll: true,
         });
-    }, 15000); // 15 segundos
+    }, 10000); // 10 segundos - mais frequente para melhor UX
 });
 
 onUnmounted(() => {
@@ -99,173 +142,144 @@ onUnmounted(() => {
 
         <div class="py-16">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-                <!-- Estatísticas -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                    <div class="group relative rounded-3xl bg-white/70 backdrop-blur-xl p-6 shadow-xl ring-1 ring-white/20 border border-white/30 hover:shadow-2xl transition-all duration-300 hover:-translate-y-1">
-                        <div class="flex items-center space-x-4">
-                            <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-r from-slate-500 to-slate-600 shadow-lg">
-                                <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-                                </svg>
-                            </div>
-                            <div>
-                                <dt class="text-sm font-medium text-slate-600">Total</dt>
-                                <dd class="text-3xl font-bold text-slate-900">{{ stats.total }}</dd>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="group relative rounded-3xl bg-white/70 backdrop-blur-xl p-6 shadow-xl ring-1 ring-white/20 border border-white/30 hover:shadow-2xl transition-all duration-300 hover:-translate-y-1">
-                        <div class="flex items-center space-x-4">
-                            <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-r from-yellow-500 to-orange-500 shadow-lg">
-                                <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                </svg>
-                            </div>
-                            <div>
-                                <dt class="text-sm font-medium text-slate-600">Pendentes</dt>
-                                <dd class="text-3xl font-bold text-amber-600">{{ stats.pending }}</dd>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="group relative rounded-3xl bg-white/70 backdrop-blur-xl p-6 shadow-xl ring-1 ring-white/20 border border-white/30 hover:shadow-2xl transition-all duration-300 hover:-translate-y-1">
-                        <div class="flex items-center space-x-4">
-                            <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-r from-emerald-500 to-green-500 shadow-lg">
-                                <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                </svg>
-                            </div>
-                            <div>
-                                <dt class="text-sm font-medium text-slate-600">Em Atendimento</dt>
-                                <dd class="text-3xl font-bold text-emerald-600">{{ stats.in_progress }}</dd>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="group relative rounded-3xl bg-white/70 backdrop-blur-xl p-6 shadow-xl ring-1 ring-white/20 border border-white/30 hover:shadow-2xl transition-all duration-300 hover:-translate-y-1">
-                        <div class="flex items-center space-x-4">
-                            <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-r from-slate-500 to-slate-600 shadow-lg">
-                                <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
-                                </svg>
-                            </div>
-                            <div>
-                                <dt class="text-sm font-medium text-slate-600">Resolvidas</dt>
-                                <dd class="text-3xl font-bold text-slate-700">{{ stats.resolved }}</dd>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Filtros -->
-                <div class="bg-white/70 backdrop-blur-xl rounded-3xl shadow-xl ring-1 ring-white/20 border border-white/30 mb-8 overflow-hidden">
-                    <div class="px-8 py-6">
-                        <div class="flex items-center space-x-3 mb-6">
-                            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500">
-                                <svg class="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path>
-                                </svg>
-                            </div>
-                            <h3 class="text-xl font-bold text-slate-900">Filtros</h3>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div>
-                                <label class="block text-sm font-semibold text-slate-800 mb-3">Buscar</label>
-                                <input
-                                    v-model="search"
-                                    type="text"
-                                    placeholder="Nome, telefone..."
-                                    class="w-full rounded-2xl border-slate-200 bg-slate-50/50 px-4 py-3 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 transition-all duration-200"
-                                />
-                            </div>
-                            <div>
-                                <label class="block text-sm font-semibold text-slate-800 mb-3">Status</label>
-                                <select
-                                    v-model="statusFilter"
-                                    class="w-full rounded-2xl border-slate-200 bg-slate-50/50 px-4 py-3 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 transition-all duration-200"
-                                >
-                                    <option value="all">Todos</option>
-                                    <option value="pending">Pendente</option>
-                                    <option value="in_progress">Em Atendimento</option>
-                                    <option value="resolved">Resolvida</option>
-                                    <option value="closed">Fechada</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Departamento</label>
-                                <select
-                                    v-model="departmentFilter"
-                                    class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                                >
-                                    <option :value="null">Todos</option>
-                                    <option v-for="dept in departments" :key="dept.id" :value="dept.id">
-                                        {{ dept.name }}
-                                    </option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Lista de Conversas -->
-                <div class="bg-white shadow rounded-lg overflow-hidden">
-                    <div class="px-4 py-5 sm:p-6">
-                        <div v-if="conversations.data && conversations.data.length > 0" class="space-y-3">
-                            <Link
-                                v-for="conv in conversations.data"
-                                :key="conv.id"
-                                :href="route('conversations.show', conv.id)"
-                                class="block p-4 border rounded-lg hover:bg-gray-50 transition"
-                            >
-                                <div class="flex items-center justify-between">
-                                    <div class="flex-1">
-                                        <div class="flex items-center gap-3">
-                                            <h3 class="text-sm font-medium text-gray-900">
-                                                {{ conv.contact?.name || conv.contact_name || 'Contato Desconhecido' }}
-                                            </h3>
-                                            <span :class="getStatusColor(conv.status)" class="px-2 py-1 text-xs font-semibold rounded-full">
-                                                {{ getStatusText(conv.status) }}
-                                            </span>
-                                            <span v-if="conv.unread_count > 0" class="bg-red-500 text-white text-xs font-semibold rounded-full px-2 py-1">
-                                                {{ conv.unread_count }} não lidas
-                                            </span>
-                                        </div>
-                                        <div class="text-xs text-gray-500 mt-1">
-                                            {{ conv.department?.name }}
-                                            <span v-if="conv.assigned_user"> • Atendente: {{ conv.assigned_user.name }}</span>
-                                        </div>
-                                        <div v-if="conv.messages && conv.messages.length > 0" class="text-sm text-gray-600 mt-2 truncate">
-                                            {{ conv.messages[0].content }}
-                                        </div>
-                                    </div>
-                                    <div class="text-xs text-gray-400 ml-4 whitespace-nowrap">
-                                        {{ new Date(conv.last_message_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }}
+                <!-- Layout Principal WhatsApp-style -->
+                <div class="bg-white shadow rounded-lg overflow-hidden" style="height: 600px;">
+                    <div class="flex h-full">
+                        <!-- Sidebar - Lista de Conversas -->
+                        <div class="w-1/3 bg-gray-50 border-r border-gray-200 flex flex-col">
+                            <!-- Header da Sidebar -->
+                            <div class="bg-white border-b border-gray-200 px-4 py-3">
+                                <div class="flex items-center justify-between mb-4">
+                                    <h3 class="text-lg font-semibold text-gray-900">Conversas</h3>
+                                    <div class="flex items-center gap-2 text-sm text-gray-600">
+                                        <span>Total: {{ stats.total }}</span>
                                     </div>
                                 </div>
-                            </Link>
-                        </div>
-                        <div v-else class="text-center py-12">
-                            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                            </svg>
-                            <h3 class="mt-2 text-sm font-medium text-gray-900">Nenhuma conversa encontrada</h3>
-                            <p class="mt-1 text-sm text-gray-500">Tente ajustar os filtros.</p>
+
+                                <!-- Filtros Compactos -->
+                                <div class="space-y-3">
+                                    <input
+                                        v-model="search"
+                                        type="text"
+                                        placeholder="Buscar conversas..."
+                                        class="w-full rounded-lg border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
+                                    />
+                                    <div class="flex gap-2">
+                                        <select
+                                            v-model="statusFilter"
+                                            class="flex-1 rounded-lg border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
+                                        >
+                                            <option value="all">Todos</option>
+                                            <option value="pending">Pendentes</option>
+                                            <option value="in_progress">Em andamento</option>
+                                            <option value="resolved">Resolvidas</option>
+                                            <option value="closed">Fechadas</option>
+                                        </select>
+                                        <select
+                                            v-model="departmentFilter"
+                                            class="flex-1 rounded-lg border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
+                                        >
+                                            <option :value="null">Todos deptos</option>
+                                            <option v-for="dept in departments" :key="dept.id" :value="dept.id">
+                                                {{ dept.name }}
+                                            </option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Lista de Conversas -->
+                            <div class="flex-1 overflow-y-auto">
+                                <div v-if="conversations.data && conversations.data.length > 0">
+                                    <div
+                                        v-for="conv in conversations.data"
+                                        :key="conv.id"
+                                        @click="selectConversation(conv)"
+                                        :class="[
+                                            'border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors duration-150',
+                                            selectedConversationId === conv.id ? 'bg-emerald-50 border-l-4 border-l-emerald-500' : ''
+                                        ]"
+                                    >
+                                        <div class="px-4 py-3">
+                                            <div class="flex items-center justify-between">
+                                                <div class="flex items-center gap-3 flex-1 min-w-0">
+                                                    <!-- Avatar -->
+                                                    <div class="h-10 w-10 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
+                                                        <span class="text-white font-semibold text-sm">
+                                                            {{ (conv.contact?.name || conv.contact_name || 'C').charAt(0).toUpperCase() }}
+                                                        </span>
+                                                    </div>
+
+                                                    <!-- Informações da Conversa -->
+                                                    <div class="flex-1 min-w-0">
+                                                        <div class="flex items-center justify-between mb-1">
+                                                            <h4 class="text-sm font-semibold text-gray-900 truncate">
+                                                                {{ conv.contact?.name || conv.contact_name || 'Contato Desconhecido' }}
+                                                            </h4>
+                                                            <span class="text-xs text-gray-500 flex-shrink-0 ml-2">
+                                                                {{ formatLastMessageTime(conv.last_message_at) }}
+                                                            </span>
+                                                        </div>
+
+                                                        <div class="flex items-center justify-between">
+                                                            <div class="flex-1 min-w-0">
+                                                                <p class="text-xs text-gray-600 truncate mb-1">
+                                                                    {{ conv.department?.name }}
+                                                                    <span v-if="conv.assigned_user" class="ml-1">• {{ conv.assigned_user.name }}</span>
+                                                                </p>
+                                                                <p v-if="conv.messages && conv.messages.length > 0" class="text-sm text-gray-700 truncate">
+                                                                    {{ conv.messages[0].content }}
+                                                                </p>
+                                                            </div>
+
+                                                            <!-- Indicadores -->
+                                                            <div class="flex flex-col items-end gap-1 ml-2">
+                                                                <span :class="getStatusColor(conv.status)" class="px-1.5 py-0.5 text-xs font-medium rounded-full">
+                                                                    {{ getStatusText(conv.status) }}
+                                                                </span>
+                                                                <span v-if="conv.unread_count > 0" class="bg-emerald-500 text-white text-xs font-semibold rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
+                                                                    {{ conv.unread_count > 99 ? '99+' : conv.unread_count }}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div v-else class="flex items-center justify-center h-full text-gray-500">
+                                    <div class="text-center">
+                                        <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                        </svg>
+                                        <p class="text-sm font-medium">Nenhuma conversa encontrada</p>
+                                        <p class="text-xs">Tente ajustar os filtros</p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
-                        <!-- Paginação -->
-                        <div v-if="conversations.links && conversations.links.length > 3" class="mt-6 flex justify-center">
-                            <nav class="flex gap-2">
-                                <Link
-                                    v-for="link in conversations.links"
-                                    :key="link.label"
-                                    :href="link.url || '#'"
-                                    v-html="link.label"
-                                    :class="{
-                                        'bg-blue-600 text-white': link.active,
-                                        'bg-white text-gray-700 hover:bg-gray-50': !link.active,
-                                        'opacity-50 cursor-not-allowed': !link.url
-                                    }"
-                                    class="px-4 py-2 border rounded-md text-sm font-medium"
+                        <!-- Área Principal - Chat -->
+                        <div class="flex-1 flex flex-col">
+                            <div v-if="selectedConversation" class="h-full">
+                                <ChatConversation
+                                    :conversation="selectedConversation"
+                                    :show-header="true"
+                                    :show-back-button="false"
                                 />
-                            </nav>
+                            </div>
+
+                            <div v-else class="h-full flex items-center justify-center bg-gray-50">
+                                <div class="text-center">
+                                    <svg class="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                    </svg>
+                                    <h3 class="text-lg font-medium text-gray-900 mb-2">Selecione uma conversa</h3>
+                                    <p class="text-sm text-gray-500">Escolha uma conversa da lista para começar a conversar</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -63,11 +63,6 @@ class WhatsAppNumber extends Model
         return $this->hasMany(WhatsAppSession::class, 'whatsapp_number_id');
     }
 
-    public function activeSession(): HasOne
-    {
-        return $this->hasOne(WhatsAppSession::class, 'whatsapp_number_id')->whereIn('status', ['connected', 'connecting']);
-    }
-
     public function contacts(): HasMany
     {
         return $this->hasMany(Contact::class);

@@ -46,8 +46,8 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
                 'data' => $this->eventData
             ]);
 
-            // Buscar WhatsAppNumber pelo JID e pegar a sessão ativa
-            $whatsappNumber = WhatsAppNumber::where('jid', $this->numberId)->first();
+            // Buscar WhatsAppNumber pelo JID com fallback inteligente
+            $whatsappNumber = $this->findWhatsAppNumberByJid($this->numberId);
 
             if (!$whatsappNumber) {
                 Log::warning('WhatsAppNumber não encontrado para JID', [
@@ -57,7 +57,7 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
                 return;
             }
 
-            $session = $whatsappNumber->activeSession;
+            $session = $this->getLastSession($whatsappNumber->id);
 
             if (!$session) {
                 Log::warning('Sessão ativa não encontrada para WhatsAppNumber', [
@@ -68,13 +68,6 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
                 ]);
                 return;
             }
-
-            Log::info('Sessão encontrada via WhatsAppNumber JID', [
-                'jid' => $this->numberId,
-                'whatsapp_number_id' => $whatsappNumber->id,
-                'session_id' => $session->id,
-                'event_type' => $this->eventType
-            ]);
 
             $whatsappNumber = $session->whatsappNumber;
 
@@ -129,6 +122,60 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
         }
     }
 
+    private function getLastSession(string $whatsappNumberId): WhatsAppSession
+    {
+        return WhatsAppSession::where('whatsapp_number_id', $whatsappNumberId)
+            ->orderBy('id', 'desc')
+            ->first();
+    }
+
+    /**
+     * Encontrar WhatsAppNumber por JID com múltiplas estratégias
+     */
+    protected function findWhatsAppNumberByJid(string $jid): ?WhatsAppNumber
+    {
+        // 1. Tentar busca direta pelo JID completo
+        $whatsappNumber = WhatsAppNumber::where('jid', $jid)->first();
+        if ($whatsappNumber) {
+            return $whatsappNumber;
+        }
+
+        // 2. Se não encontrou e o JID contém '@', extrair o número de telefone
+        if (strpos($jid, '@') !== false) {
+            $phoneNumber = explode('@', $jid)[0];
+
+            // Para JIDs no formato "numero:device@s.whatsapp.net", pegar apenas o número
+            if (strpos($phoneNumber, ':') !== false) {
+                $phoneNumber = explode(':', $phoneNumber)[0];
+            }
+
+            // Buscar pelo número de telefone
+            $whatsappNumber = WhatsAppNumber::where('phone_number', $phoneNumber)->first();
+            if ($whatsappNumber) {
+                Log::info('WhatsAppNumber encontrado por número de telefone', [
+                    'original_jid' => $jid,
+                    'extracted_phone' => $phoneNumber,
+                    'whatsapp_number_id' => $whatsappNumber->id,
+                    'stored_jid' => $whatsappNumber->jid
+                ]);
+
+                // Opcional: atualizar o JID no banco se for diferente
+                if ($whatsappNumber->jid !== $jid) {
+                    $whatsappNumber->update(['jid' => $jid]);
+                    Log::info('JID atualizado no WhatsAppNumber', [
+                        'whatsapp_number_id' => $whatsappNumber->id,
+                        'old_jid' => $whatsappNumber->jid,
+                        'new_jid' => $jid
+                    ]);
+                }
+
+                return $whatsappNumber;
+            }
+        }
+
+        return null;
+    }
+
     /**
      * Processar evento de QR Code
      */
@@ -166,7 +213,7 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
             'event_type' => $this->eventType
         ]);
 
-        $whatsappService->saveQRCode($this->numberId, $qrCode);
+        $whatsappService->saveQRCode($whatsappNumber->id, $qrCode);
 
         Log::info('QR Code salvo para WhatsApp', [
             'whatsapp_number_id' => $whatsappNumber->id,
@@ -384,35 +431,20 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
      */
     protected function findOrCreateConversation(WhatsAppSession $session, Contact $contact, string $chatJid): Conversation
     {
-        $conversation = Conversation::where('whatsapp_session_id', $session->id)
-            ->where('contact_id', $contact->id)
+        // Determinar o departamento para esta mensagem
+        $department = $this->getDepartmentForMessage($session, $contact, $chatJid);
+
+        // Buscar conversa existente por company_id, contact_jid e department_id
+        $conversation = Conversation::where('company_id', $session->company_id)
+            ->where('contact_jid', $chatJid)
+            ->where('department_id', $department->id)
             ->first();
 
         if (!$conversation) {
-            // Buscar departamento padrão da empresa ou primeiro disponível
-            $defaultDepartment = Department::where('company_id', $session->company_id)
-                ->orderBy('created_at')
-                ->first();
-
-            // Se não houver departamento, criar um padrão
-            if (!$defaultDepartment) {
-                $defaultDepartment = Department::create([
-                    'company_id' => $session->company_id,
-                    'name' => 'Geral',
-                    'description' => 'Departamento padrão',
-                    'is_active' => true,
-                ]);
-
-                Log::info('Departamento padrão criado', [
-                    'department_id' => $defaultDepartment->id,
-                    'company_id' => $session->company_id
-                ]);
-            }
-
             $conversation = Conversation::create([
                 'company_id' => $session->company_id,
                 'whatsapp_session_id' => $session->id,
-                'department_id' => $defaultDepartment->id,
+                'department_id' => $department->id,
                 'contact_id' => $contact->id,
                 'contact_jid' => $chatJid,
                 'contact_name' => $contact->name,
@@ -423,11 +455,60 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
             Log::info('Nova conversa criada', [
                 'conversation_id' => $conversation->id,
                 'contact_id' => $contact->id,
-                'contact_name' => $contact->name
+                'contact_name' => $contact->name,
+                'contact_jid' => $chatJid,
+                'department_id' => $department->id,
+                'department_name' => $department->name
             ]);
+        } else {
+            // Se a conversa existe mas está associada a uma sessão diferente, atualizar
+            if ($conversation->whatsapp_session_id !== $session->id) {
+                $conversation->update([
+                    'whatsapp_session_id' => $session->id,
+                    'contact_id' => $contact->id, // Atualizar contact_id se necessário
+                    'last_message_at' => now()
+                ]);
+
+                Log::info('Conversa existente atualizada com nova sessão', [
+                    'conversation_id' => $conversation->id,
+                    'old_session_id' => $conversation->whatsapp_session_id,
+                    'new_session_id' => $session->id,
+                    'contact_jid' => $chatJid,
+                    'department_id' => $department->id
+                ]);
+            }
         }
 
         return $conversation;
+    }
+
+    /**
+     * Determinar o departamento para a mensagem recebida
+     */
+    protected function getDepartmentForMessage(WhatsAppSession $session, Contact $contact, string $chatJid): Department
+    {
+        // Por enquanto, usar departamento padrão da empresa
+        // TODO: Implementar lógica de roteamento baseada em regras, tags, etc.
+        $department = Department::where('company_id', $session->company_id)
+            ->orderBy('created_at')
+            ->first();
+
+        // Se não houver departamento, criar um padrão
+        if (!$department) {
+            $department = Department::create([
+                'company_id' => $session->company_id,
+                'name' => 'Geral',
+                'description' => 'Departamento padrão',
+                'is_active' => true,
+            ]);
+
+            Log::info('Departamento padrão criado', [
+                'department_id' => $department->id,
+                'company_id' => $session->company_id
+            ]);
+        }
+
+        return $department;
     }
 
     /**

@@ -25,23 +25,29 @@ class WhatsAppService
     {
         try {
             // Criar ou buscar sessão
-            $session = WhatsAppSession::firstOrCreate(
-                [
+            $session = $this->getLastSession($whatsappNumber->id);
+
+            if(!$session) {
+                WhatsAppSession::create([
                     'company_id' => $whatsappNumber->company_id,
                     'whatsapp_number_id' => $whatsappNumber->id,
-                ],
-                [
                     'session_id' => $whatsappNumber->jid,
-                    'status' => 'disconnected',
-                ]
-            );
+                    'status' => 'connecting',
+                ]);
+            } else {
+                $session->update([
+                    'status' => 'connecting',
+                ]);
+            }
 
             // Atualizar session_id se necessário
             if ($session->session_id !== $whatsappNumber->jid) {
                 $session->update(['session_id' => $whatsappNumber->jid]);
             }
 
-            // Chamar serviço Go - POST /number com X-Number-Id header
+            $this->removeOldQrcode($whatsappNumber->id);
+
+            // Chamar serviço Go - POST /number
             $response = Http::withHeaders([
                 'X-Number-Id' => $whatsappNumber->jid
             ])->post("{$this->serviceUrl}/number");
@@ -50,14 +56,13 @@ class WhatsAppService
                 $data = $response->json();
                 $jid = $data['ID'] ?? null;
 
-                // Atualizar JID real para simplificar futuras associações
                 if ($jid) {
                     $whatsappNumber->update(['jid' => $jid]);
                 }
 
                 $whatsappNumber->updateStatus('connecting');
                 $session->update([
-                    'session_id' => $jid ?: $whatsappNumber->jid, // Atualizar session_id para o JID
+                    'session_id' => $jid ?: $whatsappNumber->jid,
                     'status' => 'connecting',
                     'metadata' => array_merge($session->metadata ?? [], [
                         'service_id' => $jid
@@ -92,13 +97,16 @@ class WhatsAppService
     public function disconnect(WhatsAppNumber $whatsappNumber): bool
     {
         try {
-            $session = $whatsappNumber->activeSession;
+            $session = $this->getLastSession($whatsappNumber->id);
 
             if (!$session) {
+                Log::warning('Sessão não encontrada para desconectar WhatsApp', [
+                    'whatsapp_number_id' => $whatsappNumber->id
+                ]);
                 return false;
             }
 
-            // Chamar serviço Go - DELETE /number com X-Number-Id header (usa o JID)
+            // Chamar serviço Go - DELETE /number
             $response = Http::withHeaders([
                 'X-Number-Id' => $whatsappNumber->jid
             ])->delete("{$this->serviceUrl}/number");
@@ -144,10 +152,7 @@ class WhatsAppService
     public function checkStatus(WhatsAppNumber $whatsappNumber): ?array
     {
         try {
-            // Buscar sessão mais recente (mesmo que conectando)
-            $session = WhatsAppSession::where('whatsapp_number_id', $whatsappNumber->id)
-                ->latest('created_at')
-                ->first();
+            $session = $this->getLastSession($whatsappNumber->id);
 
             if (!$session) {
                 return null;
@@ -244,17 +249,26 @@ class WhatsAppService
     }
 
     /**
+     * Get last session
+     */
+    public function getLastSession(string $whatsappNumberId)
+    {
+        return WhatsAppSession::where('whatsapp_number_id', $whatsappNumberId)
+            ->orderBy('id', 'desc')
+            ->first();
+    }
+
+    /**
      * Salvar QR Code recebido via webhook
      */
-    public function saveQRCode(string $numberId, string $qrCode): bool
+    public function saveQRCode(string $whatsappNumberId, string $qrCode): bool
     {
         try {
-            // Agora é simples - o numberId é o jid que contém o JID correto
-            $session = WhatsAppSession::where('session_id', $numberId)->first();
+            $session = $this->getLastSession($whatsappNumberId);
 
             if (!$session) {
                 Log::warning('Sessão não encontrada para QR code', [
-                    'number_id' => $numberId,
+                    'whatsapp_number_id' => $whatsappNumberId,
                     'total_sessions' => WhatsAppSession::count(),
                     'all_session_ids' => WhatsAppSession::pluck('session_id')->toArray()
                 ]);
@@ -262,7 +276,7 @@ class WhatsAppService
             }
 
             Log::info('Salvando QR code', [
-                'number_id' => $numberId,
+                'whatsapp_number_id' => $whatsappNumberId,
                 'session_id' => $session->id,
                 'qr_length' => strlen($qrCode),
                 'session_status' => $session->status
@@ -285,7 +299,47 @@ class WhatsAppService
 
         } catch (\Exception $e) {
             Log::error('Erro ao salvar QR code', [
-                'number_id' => $numberId,
+                'whatsapp_number_id' => $whatsappNumberId,
+                'error' => $e->getMessage()
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Remove old qr code
+     */
+    public function removeOldQrcode(string $whatsappNumberId): bool
+    {
+        try {
+            $session = $this->getLastSession($whatsappNumberId);
+
+            if (!$session) {
+                Log::warning('Sessão não encontrada para remover QR code', [
+                    'whatsapp_number_id' => $whatsappNumberId,
+                    'total_sessions' => WhatsAppSession::count(),
+                    'all_session_ids' => WhatsAppSession::pluck('session_id')->toArray()
+                ]);
+                return false;
+            }
+
+            $session->update([
+                'metadata' => array_merge($session->metadata ?? [], [
+                    'qr_code' => null,
+                    'qr_removed_at' => now()->toIso8601String()
+                ])
+            ]);
+
+            Log::info('Removendo QR code', [
+                'session_id' => $session->id,
+                'whatsapp_number_id' => $session->whatsapp_number_id
+            ]);
+
+            return true;
+
+        } catch (\Exception $e) {
+            Log::error('Erro ao salvar QR code', [
+                'whatsapp_number_id' => $whatsappNumberId,
                 'error' => $e->getMessage()
             ]);
             return false;

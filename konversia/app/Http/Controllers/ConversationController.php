@@ -16,7 +16,7 @@ class ConversationController extends Controller
     {
         $user = $request->user();
         $company = $user->company;
-        
+
         if (!$company) {
             abort(403, 'Usuário não possui empresa associada');
         }
@@ -57,7 +57,7 @@ class ConversationController extends Controller
         // Ordenação
         $query->latest('last_message_at');
 
-        $conversations = $query->paginate(20);
+        $conversations = $query->paginate(50); // Aumentado para melhor UX no chat
 
         // Contar não lidas e adicionar ao array
         $conversations->getCollection()->transform(function ($conversation) {
@@ -88,6 +88,35 @@ class ConversationController extends Controller
                 ->count(),
         ];
 
+        // Conversa selecionada (se informada)
+        $selectedConversation = null;
+        if ($request->has('selected') && $request->selected) {
+            $selectedConversation = Conversation::where('company_id', $company->id)
+                ->where('id', $request->selected)
+                ->with([
+                    'contact',
+                    'department',
+                    'assignedUser',
+                    'messages' => function ($query) {
+                        $query->orderBy('sent_at');
+                    }
+                ])
+                ->first();
+
+            // Verificar permissão para employee
+            if ($selectedConversation && $user->isEmployee() && !$user->belongsToDepartment($selectedConversation->department_id)) {
+                $selectedConversation = null;
+            }
+
+            // Marcar mensagens como lidas se a conversa foi selecionada
+            if ($selectedConversation) {
+                $selectedConversation->messages()
+                    ->where('direction', 'inbound')
+                    ->whereNull('read_at')
+                    ->update(['read_at' => now()]);
+            }
+        }
+
         return Inertia::render('Conversations/Index', [
             'conversations' => $conversations,
             'departments' => $departments,
@@ -97,6 +126,7 @@ class ConversationController extends Controller
                 'search' => $request->search ?? '',
             ],
             'stats' => $stats,
+            'selectedConversation' => $selectedConversation,
         ]);
     }
 
