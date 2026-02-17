@@ -68,25 +68,29 @@ let messagePollingInterval = null;
 
 const startMessagePolling = () => {
     if (messagePollingInterval) return;
-
+    getMessages();
     messagePollingInterval = setInterval(() => {
-        // Usar Inertia para fazer reload apenas da conversa selecionada
-        router.reload({
-            only: ['selectedConversation'],
-            data: { selected: props.conversation.id },
-            preserveState: true,
-            preserveScroll: true,
-            onSuccess: (page) => {
-                // Atualizar apenas as mensagens se a conversa ainda for a mesma
-                if (page.props.selectedConversation && page.props.selectedConversation.id === props.conversation.id) {
-                    props.conversation.messages = page.props.selectedConversation.messages;
-                }
-            },
-            onError: (errors) => {
-                console.warn('Erro ao buscar mensagens atualizadas:', errors);
+        getMessages();
+    }, 3000);
+};
+
+const getMessages = () => {
+    // Usar Inertia para fazer reload apenas da conversa selecionada
+    router.reload({
+        only: ['selectedConversation'],
+        data: { selected: props.conversation.id },
+        preserveState: true,
+        preserveScroll: true,
+        onSuccess: (page) => {
+            // Atualizar apenas as mensagens se a conversa ainda for a mesma
+            if (page.props.selectedConversation && page.props.selectedConversation.id === props.conversation.id) {
+                props.conversation.messages = page.props.selectedConversation.messages;
             }
-        });
-    }, 3000); // A cada 3 segundos
+        },
+        onError: (errors) => {
+            console.warn('Erro ao buscar mensagens atualizadas:', errors);
+        }
+    });
 };
 
 const stopMessagePolling = () => {

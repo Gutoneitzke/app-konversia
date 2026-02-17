@@ -3,6 +3,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import ChatConversation from '@/Components/ChatConversation.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ref, watch, computed } from 'vue';
+import axios from 'axios';
 
 const props = defineProps({
     conversations: Object,
@@ -49,13 +50,6 @@ watch([statusFilter, departmentFilter], () => {
 });
 
 const selectConversation = (conversation) => {
-    console.log('Selecting conversation:', conversation.id);
-    console.log('Current filters:', {
-        search: search.value,
-        status: statusFilter.value,
-        department: departmentFilter.value
-    });
-
     selectedConversationId.value = conversation.id;
     loadingConversation.value = true;
 
@@ -72,28 +66,17 @@ const selectConversation = (conversation) => {
 
     // Atualizar URL
     const newUrl = `${window.location.pathname}?${params.toString()}`;
-    console.log('New URL:', newUrl);
     window.history.replaceState({}, '', newUrl);
 
-    // Timeout de segurança para evitar loading infinito
-    const loadingTimeout = setTimeout(() => {
-        if (loadingConversation.value) {
-            console.warn('Loading timeout reached, stopping loading state');
-            loadingConversation.value = false;
-        }
-    }, 10000); // 10 segundos de timeout
+    // Marcar mensagens como lidas com axios (ação em background)
+    axios.post(route('conversations.mark-read', conversation.id))
+        .catch((error) => {
+            console.error('Erro ao marcar mensagens como lidas:', error);
+        });
 
-    // Marcar mensagens como lidas e recarregar a página com Inertia
-    router.post(route('conversations.mark-read', conversation.id), {}, {
-        preserveState: true,
-        preserveScroll: true,
-        onSuccess: () => {
-            loadingConversation.value = false;
-        },
-        onError: () => {
-            loadingConversation.value = false;
-        }
-    });
+    setTimeout(() => {
+        loadingConversation.value = false;
+    }, 3000);
 };
 
 const selectedConversation = computed(() => {
@@ -357,6 +340,7 @@ onUnmounted(() => {
                                     :show-back-button="false"
                                     :departments="departments"
                                     :users="users"
+                                    @loaded-conversation="loadingConversation = false"
                                 />
                             </div>
 
