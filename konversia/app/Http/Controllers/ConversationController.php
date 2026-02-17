@@ -72,9 +72,10 @@ class ConversationController extends Controller
 
         // Usuários da empresa para transferência
         $users = User::where('company_id', $company->id)
-            ->where('active', true)
+            ->where('users.active', true) // Especificar tabela para evitar ambiguidade
             ->with(['departments' => function ($query) {
-                $query->where('active', true);
+                $query->where('departments.active', true)
+                      ->where('user_departments.active', true); // Especificar tabela pivot
             }])
             ->orderBy('name')
             ->get();
@@ -236,11 +237,6 @@ class ConversationController extends Controller
             abort(403, 'Acesso negado');
         }
 
-        // Verificar se o usuário pode transferir conversas deste departamento
-        if (!$user->isSuperAdmin() && !$user->belongsToDepartment($conversation->department_id)) {
-            abort(403, 'Você não tem permissão para transferir conversas deste departamento');
-        }
-
         $toDepartment = Department::findOrFail($validated['to_department_id']);
 
         // Verificar se o departamento de destino pertence à mesma empresa
@@ -250,18 +246,14 @@ class ConversationController extends Controller
 
         // Verificar se o departamento de destino é diferente do atual
         if ($toDepartment->id === $conversation->department_id) {
-            return response()->json([
-                'message' => 'A conversa já pertence a este departamento'
-            ], 422);
+            return redirect()->back()->withErrors(['to_department_id' => 'A conversa já pertence a este departamento']);
         }
 
         // Verificar se o usuário atribuído (se informado) pertence ao departamento de destino
         if ($validated['assigned_to_user_id']) {
             $assignedUser = \App\Models\User::findOrFail($validated['assigned_to_user_id']);
             if (!$assignedUser->belongsToDepartment($toDepartment->id)) {
-                return response()->json([
-                    'message' => 'O usuário atribuído não pertence ao departamento de destino'
-                ], 422);
+                return redirect()->back()->withErrors(['assigned_to_user_id' => 'O usuário atribuído não pertence ao departamento de destino']);
             }
         }
 
@@ -295,9 +287,7 @@ class ConversationController extends Controller
             'assigned_to' => $validated['assigned_to_user_id'] ? $assignedUser->name : null,
         ]);
 
-        return response()->json([
-            'message' => 'Conversa transferida com sucesso',
-            'transfer' => $transfer->load(['fromDepartment', 'toDepartment', 'fromUser', 'assignedToUser'])
-        ]);
+        // Redirecionar de volta para a página de conversas sem filtros ou conversa selecionada
+        return redirect()->to('/conversations')->with('success', 'Conversa transferida com sucesso');
     }
 }

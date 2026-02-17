@@ -38,13 +38,18 @@ const transfer = () => {
         preserveScroll: true,
         onSuccess: (response) => {
             transferring.value = false;
-            emit('transferred', response.props.flash?.message || response.data);
+            emit('transferred', response.props?.flash?.success || 'Conversa transferida com sucesso');
             form.reset();
         },
         onError: (errors) => {
             transferring.value = false;
-            console.error('Erro na transferência:', errors);
-            alert('Erro ao transferir conversa. Tente novamente.');
+            // Mostrar erros de validação se houver
+            if (errors.response?.data?.errors) {
+                const errorMessages = Object.values(errors.response.data.errors).flat();
+                alert(errorMessages.join('\n'));
+            } else {
+                alert('Erro ao transferir conversa. Tente novamente.');
+            }
         }
     });
 };

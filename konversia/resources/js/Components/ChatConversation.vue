@@ -141,10 +141,13 @@ const getStatusText = (status) => {
     return texts[status] || status;
 };
 
+const openTransferModal = () => {
+    showTransferModal.value = true;
+};
+
 const handleTransferred = (transferData) => {
     showTransferModal.value = false;
-    // A conversa será atualizada automaticamente via props quando o componente pai recarregar
-    // ou podemos emitir um evento para o componente pai
+    // O backend redireciona automaticamente para a lista de conversas
     console.log('Conversa transferida:', transferData);
 };
 </script>
@@ -185,10 +188,8 @@ const handleTransferred = (transferData) => {
                         <span :class="getStatusColor(conversation.status)" class="px-2 py-1 text-xs font-semibold rounded-full">
                             {{ getStatusText(conversation.status) }}
                         </span>
-                    </div>
-                    <div class="flex items-center gap-2">
                         <button
-                            @click="showTransferModal = true"
+                            @click="openTransferModal"
                             class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
                         >
                             <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -267,15 +268,15 @@ const handleTransferred = (transferData) => {
                 </button>
             </div>
         </div>
+        <!-- Modal de Transferência -->
+        <TransferConversationModal
+            v-if="showTransferModal"
+            :conversation="conversation"
+            :departments="departments"
+            :users="users"
+            @close="showTransferModal = false"
+            @transferred="handleTransferred"
+        />
     </div>
 </template>
 
-<!-- Modal de Transferência -->
-<TransferConversationModal
-    v-if="showTransferModal"
-    :conversation="conversation"
-    :departments="departments"
-    :users="users"
-    @close="showTransferModal = false"
-    @transferred="handleTransferred"
-/>

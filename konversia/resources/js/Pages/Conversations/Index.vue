@@ -43,12 +43,37 @@ watch(search, () => {
 });
 
 watch([statusFilter, departmentFilter], () => {
+    // Quando os filtros mudam, desmarcar qualquer conversa selecionada
+    selectedConversationId.value = null;
     applyFilters();
 });
 
 const selectConversation = (conversation) => {
+    console.log('Selecting conversation:', conversation.id);
+    console.log('Current filters:', {
+        search: search.value,
+        status: statusFilter.value,
+        department: departmentFilter.value
+    });
+
     selectedConversationId.value = conversation.id;
     loadingConversation.value = true;
+
+    // Construir URL com todos os parâmetros preservados
+    const params = new URLSearchParams();
+
+    // Adicionar filtros atuais
+    if (search.value.trim()) params.set('search', search.value.trim());
+    if (statusFilter.value && statusFilter.value !== 'all') params.set('status', statusFilter.value);
+    if (departmentFilter.value) params.set('department_id', departmentFilter.value);
+
+    // Adicionar conversa selecionada
+    params.set('selected', conversation.id);
+
+    // Atualizar URL
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    console.log('New URL:', newUrl);
+    window.history.replaceState({}, '', newUrl);
 
     // Timeout de segurança para evitar loading infinito
     const loadingTimeout = setTimeout(() => {
@@ -129,16 +154,43 @@ import { onMounted, onUnmounted } from 'vue';
 let pollingInterval = null;
 
 onMounted(() => {
-    // Verificar se há ID de conversa na URL
+    // Carregar filtros e seleção da URL
     const urlParams = new URLSearchParams(window.location.search);
+
+    // Carregar filtros da URL
+    const urlSearch = urlParams.get('search');
+    const urlStatus = urlParams.get('status');
+    const urlDepartment = urlParams.get('department_id');
     const selectedId = urlParams.get('selected');
+
+    if (urlSearch) search.value = urlSearch;
+    if (urlStatus) statusFilter.value = urlStatus;
+    if (urlDepartment) departmentFilter.value = urlDepartment;
     if (selectedId) {
         selectedConversationId.value = parseInt(selectedId);
     }
 
+    // Limpar URL se não houver parâmetros
+    const cleanParams = new URLSearchParams();
+    if (search.value.trim()) cleanParams.set('search', search.value.trim());
+    if (statusFilter.value && statusFilter.value !== 'all') cleanParams.set('status', statusFilter.value);
+    if (departmentFilter.value) cleanParams.set('department_id', departmentFilter.value);
+    if (selectedConversationId.value) cleanParams.set('selected', selectedConversationId.value);
+
+    const cleanUrl = cleanParams.toString();
+    if (cleanUrl !== window.location.search.substring(1)) {
+        window.history.replaceState({}, '', cleanUrl ? `${window.location.pathname}?${cleanUrl}` : window.location.pathname);
+    }
+
     pollingInterval = setInterval(() => {
+        // Fazer polling respeitando os filtros atuais
         router.reload({
             only: ['conversations'],
+            data: {
+                search: search.value,
+                status: statusFilter.value,
+                department_id: departmentFilter.value,
+            },
             preserveState: true,
             preserveScroll: true,
         });
