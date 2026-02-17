@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Conversation;
+use App\Models\ConversationTransfer;
 use App\Models\Department;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -68,6 +70,15 @@ class ConversationController extends Controller
             ->orderBy('name')
             ->get();
 
+        // Usuários da empresa para transferência
+        $users = User::where('company_id', $company->id)
+            ->where('active', true)
+            ->with(['departments' => function ($query) {
+                $query->where('active', true);
+            }])
+            ->orderBy('name')
+            ->get();
+
         // Estatísticas
         $stats = [
             'total' => Conversation::where('company_id', $company->id)->count(),
@@ -106,6 +117,7 @@ class ConversationController extends Controller
         return Inertia::render('Conversations/Index', [
             'conversations' => $conversations,
             'departments' => $departments,
+            'users' => $users,
             'filters' => [
                 'status' => $request->status ?? 'all',
                 'department_id' => $request->department_id ?? null,
@@ -204,6 +216,88 @@ class ConversationController extends Controller
 
         return Inertia::render('Conversations/Show', [
             'conversation' => $conversation,
+        ]);
+    }
+
+    /**
+     * Transferir conversa para outro departamento
+     */
+    public function transfer(Request $request, Conversation $conversation)
+    {
+        $user = $request->user();
+        $validated = $request->validate([
+            'to_department_id' => 'required|exists:departments,id',
+            'assigned_to_user_id' => 'nullable|exists:users,id',
+            'notes' => 'nullable|string|max:500',
+        ]);
+
+        // Verificar se a conversa pertence à empresa do usuário
+        if ($conversation->company_id !== $user->company_id) {
+            abort(403, 'Acesso negado');
+        }
+
+        // Verificar se o usuário pode transferir conversas deste departamento
+        if (!$user->isSuperAdmin() && !$user->belongsToDepartment($conversation->department_id)) {
+            abort(403, 'Você não tem permissão para transferir conversas deste departamento');
+        }
+
+        $toDepartment = Department::findOrFail($validated['to_department_id']);
+
+        // Verificar se o departamento de destino pertence à mesma empresa
+        if ($toDepartment->company_id !== $user->company_id) {
+            abort(403, 'Departamento de destino inválido');
+        }
+
+        // Verificar se o departamento de destino é diferente do atual
+        if ($toDepartment->id === $conversation->department_id) {
+            return response()->json([
+                'message' => 'A conversa já pertence a este departamento'
+            ], 422);
+        }
+
+        // Verificar se o usuário atribuído (se informado) pertence ao departamento de destino
+        if ($validated['assigned_to_user_id']) {
+            $assignedUser = \App\Models\User::findOrFail($validated['assigned_to_user_id']);
+            if (!$assignedUser->belongsToDepartment($toDepartment->id)) {
+                return response()->json([
+                    'message' => 'O usuário atribuído não pertence ao departamento de destino'
+                ], 422);
+            }
+        }
+
+        // Criar registro de transferência
+        $transfer = ConversationTransfer::create([
+            'conversation_id' => $conversation->id,
+            'from_department_id' => $conversation->department_id,
+            'to_department_id' => $toDepartment->id,
+            'from_user_id' => $user->id,
+            'assigned_to_user_id' => $validated['assigned_to_user_id'] ?? null,
+            'notes' => $validated['notes'] ?? null,
+            'transferred_at' => now(),
+        ]);
+
+        // Atualizar conversa
+        $conversation->update([
+            'department_id' => $toDepartment->id,
+            'assigned_to' => $validated['assigned_to_user_id'] ?? null,
+            'transferred_from_department_id' => $conversation->department_id,
+            'transferred_at' => now(),
+            'transfer_notes' => $validated['notes'] ?? null,
+            'status' => 'pending', // Resetar status para pending quando transferida
+        ]);
+
+        // Log da transferência
+        \Illuminate\Support\Facades\Log::info('Conversa transferida', [
+            'conversation_id' => $conversation->id,
+            'from_department' => $conversation->department->name,
+            'to_department' => $toDepartment->name,
+            'transferred_by' => $user->name,
+            'assigned_to' => $validated['assigned_to_user_id'] ? $assignedUser->name : null,
+        ]);
+
+        return response()->json([
+            'message' => 'Conversa transferida com sucesso',
+            'transfer' => $transfer->load(['fromDepartment', 'toDepartment', 'fromUser', 'assignedToUser'])
         ]);
     }
 }

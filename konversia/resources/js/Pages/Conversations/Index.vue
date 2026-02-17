@@ -7,6 +7,7 @@ import { ref, watch, computed } from 'vue';
 const props = defineProps({
     conversations: Object,
     departments: Array,
+    users: Array,
     filters: Object,
     stats: Object,
     selectedConversation: Object, // Conversa selecionada (opcional)
@@ -302,6 +303,8 @@ onUnmounted(() => {
                                     :conversation="selectedConversation"
                                     :show-header="true"
                                     :show-back-button="false"
+                                    :departments="departments"
+                                    :users="users"
                                 />
                             </div>
 

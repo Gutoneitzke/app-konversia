@@ -1,6 +1,7 @@
 <script setup>
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { onMounted, onUnmounted, ref, nextTick, watch } from 'vue';
+import TransferConversationModal from './TransferConversationModal.vue';
 
 const props = defineProps({
     conversation: Object,
@@ -11,6 +12,14 @@ const props = defineProps({
     showBackButton: {
         type: Boolean,
         default: false
+    },
+    departments: {
+        type: Array,
+        default: () => []
+    },
+    users: {
+        type: Array,
+        default: () => []
     }
 });
 
@@ -20,6 +29,7 @@ const form = useForm({
 
 const sending = ref(false);
 const messagesContainer = ref(null);
+const showTransferModal = ref(false);
 
 const sendMessage = () => {
     if (!form.content.trim()) return;
@@ -130,6 +140,13 @@ const getStatusText = (status) => {
     };
     return texts[status] || status;
 };
+
+const handleTransferred = (transferData) => {
+    showTransferModal.value = false;
+    // A conversa será atualizada automaticamente via props quando o componente pai recarregar
+    // ou podemos emitir um evento para o componente pai
+    console.log('Conversa transferida:', transferData);
+};
 </script>
 
 <template>
@@ -159,14 +176,27 @@ const getStatusText = (status) => {
                         </div>
                     </div>
                 </div>
-                <div class="flex items-center gap-4 text-sm text-gray-600">
-                    <span>Departamento: <strong>{{ conversation.department?.name }}</strong></span>
-                    <span v-if="conversation.assigned_user">
-                        Atendente: <strong>{{ conversation.assigned_user.name }}</strong>
-                    </span>
-                    <span :class="getStatusColor(conversation.status)" class="px-2 py-1 text-xs font-semibold rounded-full">
-                        {{ getStatusText(conversation.status) }}
-                    </span>
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4 text-sm text-gray-600">
+                        <span>Departamento: <strong>{{ conversation.department?.name }}</strong></span>
+                        <span v-if="conversation.assigned_user">
+                            Atendente: <strong>{{ conversation.assigned_user.name }}</strong>
+                        </span>
+                        <span :class="getStatusColor(conversation.status)" class="px-2 py-1 text-xs font-semibold rounded-full">
+                            {{ getStatusText(conversation.status) }}
+                        </span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button
+                            @click="showTransferModal = true"
+                            class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
+                        >
+                            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                            </svg>
+                            Transferir
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -239,3 +269,13 @@ const getStatusText = (status) => {
         </div>
     </div>
 </template>
+
+<!-- Modal de Transferência -->
+<TransferConversationModal
+    v-if="showTransferModal"
+    :conversation="conversation"
+    :departments="departments"
+    :users="users"
+    @close="showTransferModal = false"
+    @transferred="handleTransferred"
+/>
