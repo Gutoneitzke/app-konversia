@@ -307,7 +307,58 @@ make shell          # Acessa shell do Laravel
   make queue-monitor     # Monitor avançado das filas WhatsApp
   make queue-status      # Ver status das filas (Laravel)
   make queue-clear       # Limpar filas congestionadas
+  make locks-monitor     # Monitor dos locks WhatsApp
+  make locks-monitor-stale # Locks expirados/stale
+  make locks-test         # Testar sistema de locks
 ```
+
+## 🔒 Sistema de Locks WhatsApp
+
+### Controle de Concorrência no Envio
+
+Para evitar problemas de concorrência no WhatsApp, implementamos um sistema de locks Redis:
+
+#### Como Funciona:
+- **Cada número WhatsApp (JID)** pode ter apenas **1 job de envio ativo por vez**
+- Jobs concorrentes aguardam ou são reagendados automaticamente
+- **Timeout do lock**: 30 segundos por envio
+- **Retry automático**: Até 3 tentativas com 10 segundos de delay
+
+#### Benefícios:
+- ✅ **Mensagens em ordem** - evita mensagens fora de sequência
+- ✅ **Sem conflitos** - previne falhas de envio
+- ✅ **Anti-ban** - evita sobrecarga na conta WhatsApp
+- ✅ **Escalável** - múltiplos números em paralelo, mas sequencial por número
+
+#### Monitoramento:
+```bash
+# Ver todos os locks ativos
+make locks-monitor
+
+# Ver apenas locks expirados (stale)
+make locks-monitor-stale
+
+# Testar locks com mensagens simultâneas
+make locks-test JID=5511999999999@s.whatsapp.net COUNT=3
+```
+
+#### Como Testar:
+```bash
+# 1. Envie múltiplas mensagens simultâneas
+make locks-test JID=5511999999999@s.whatsapp.net
+
+# 2. Monitore os locks em tempo real
+make locks-monitor
+
+# 3. Observe no Horizon como apenas 1 job processa por vez
+make horizon-dashboard
+```
+
+#### Configuração:
+- **Lock Key**: `whatsapp:send_lock:{jid}`
+- **Timeout**: 30 segundos
+- **Block Time**: 5 segundos (espera pelo lock)
+- **TTL**: Automático no Redis
 
 ---
 

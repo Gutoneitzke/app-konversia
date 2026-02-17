@@ -120,6 +120,32 @@ queue-monitor-json: ## Monitor das filas em formato JSON
 	@echo "$(BLUE)Monitor das Filas (JSON)$(NC)"
 	cd konversia && $(SAIL) artisan whatsapp:monitor-queues --format=json
 
+locks-monitor: ## Monitor dos locks WhatsApp
+	@echo "$(BLUE)Monitor dos Locks WhatsApp$(NC)"
+	cd konversia && $(SAIL) artisan whatsapp:monitor-locks
+
+locks-monitor-stale: ## Monitor apenas locks expirados/stale
+	@echo "$(BLUE)Locks Expirados WhatsApp$(NC)"
+	cd konversia && $(SAIL) artisan whatsapp:monitor-locks --stale
+
+locks-release-stale: ## Liberar locks expirados manualmente
+	@echo "$(YELLOW)Cuidado: Isso pode liberar locks que ainda estão sendo usados!$(NC)"
+	@if [ "$(shell read -p "Tem certeza? (y/N): " confirm && echo $$confirm)" = "y" ]; then \
+		echo "$(BLUE)Liberando locks expirados...$(NC)"; \
+		cd konversia && $(SAIL) artisan tinker --execute="Cache::store('redis')->getStore()->flush(); echo 'Locks liberados';"; \
+	else \
+		echo "$(GREEN)Operação cancelada$(NC)"; \
+	fi
+
+locks-test: ## Testar sistema de locks com mensagens simultâneas
+	@echo "$(BLUE)Teste do Sistema de Locks WhatsApp$(NC)"
+	@echo "Uso: make locks-test JID=5511999999999@s.whatsapp.net COUNT=3"
+	@if [ -n "$(JID)" ]; then \
+		cd konversia && $(SAIL) artisan whatsapp:test-locks $(JID) --count=$(or $(COUNT),3); \
+	else \
+		echo "$(RED)Erro: Especifique o JID com JID=5511999999999@s.whatsapp.net$(NC)"; \
+	fi
+
 services: ## Roda queue, schedule e horizon simultaneamente
 	@echo "$(BLUE)Iniciando serviços em background...$(NC)"
 	@echo "$(YELLOW)Queue worker...$(NC)"
