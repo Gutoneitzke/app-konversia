@@ -13,8 +13,15 @@ NC=\033[0m # No Color
 SAIL=./vendor/bin/sail
 
 help: ## Mostra esta ajuda
-	@echo "$(BLUE)Comandos disponíveis:$(NC)"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
+	@echo "$(BLUE)🚀 Comandos do Projeto Konversia$(NC)"
+	@echo "$(YELLOW)Serviços principais:$(NC)"
+	@grep -E '^(start|up|down|services):.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(YELLOW)Ferramentas de debug:$(NC)"
+	@grep -E '^(telescope|horizon|redis-cli):.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(YELLOW)Outros comandos:$(NC)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -v -E '^(start|up|down|services|telescope|horizon|redis-cli|help):' | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
 
 install: ## Instala dependências do projeto
 	@echo "$(YELLOW)Instalando dependências do Laravel...$(NC)"
@@ -81,12 +88,26 @@ schedule: ## Roda o scheduler
 	@echo "$(BLUE)Iniciando scheduler...$(NC)"
 	cd konversia && $(SAIL) artisan schedule:work
 
-services: ## Roda queue e schedule simultaneamente
+horizon: ## Roda o Laravel Horizon
+	@echo "$(BLUE)Iniciando Laravel Horizon...$(NC)"
+	cd konversia && $(SAIL) artisan horizon
+
+horizon-pause: ## Pausa o Horizon
+	@echo "$(YELLOW)Pausando Horizon...$(NC)"
+	cd konversia && $(SAIL) artisan horizon:pause
+
+horizon-continue: ## Continua o Horizon
+	@echo "$(GREEN)Continuando Horizon...$(NC)"
+	cd konversia && $(SAIL) artisan horizon:continue
+
+services: ## Roda queue, schedule e horizon simultaneamente
 	@echo "$(BLUE)Iniciando serviços em background...$(NC)"
 	@echo "$(YELLOW)Queue worker...$(NC)"
 	cd konversia && $(SAIL) artisan queue:work &
 	@echo "$(YELLOW)Scheduler...$(NC)"
 	cd konversia && $(SAIL) artisan schedule:work &
+	@echo "$(YELLOW)Horizon...$(NC)"
+	cd konversia && $(SAIL) artisan horizon &
 	@echo "$(GREEN)Serviços iniciados em background!$(NC)"
 
 whatsapp-up: ## Sobe o serviço WhatsApp
@@ -102,10 +123,28 @@ whatsapp-down: ## Para o serviço WhatsApp
 whatsapp-logs: ## Logs do serviço WhatsApp
 	cd whatsapp-service && docker compose logs -f
 
+redis-cli: ## Acessa o Redis CLI
+	@echo "$(BLUE)Acessando Redis...$(NC)"
+	cd konversia && $(SAIL) redis-cli
+
+telescope: ## Abre Telescope no navegador
+	@echo "$(BLUE)Abrindo Telescope...$(NC)"
+	@echo "URL: http://localhost/telescope"
+	@if command -v open >/dev/null 2>&1; then open http://localhost/telescope; fi
+	@if command -v xdg-open >/dev/null 2>&1; then xdg-open http://localhost/telescope; fi
+
+horizon-dashboard: ## Abre Horizon no navegador
+	@echo "$(BLUE)Abrindo Horizon...$(NC)"
+	@echo "URL: http://localhost/horizon"
+	@if command -v open >/dev/null 2>&1; then open http://localhost/horizon; fi
+	@if command -v xdg-open >/dev/null 2>&1; then xdg-open http://localhost/horizon; fi
+
 start: up whatsapp-up npm-dev services ## Inicializa tudo (containers, WhatsApp, frontend e serviços)
 	@echo "$(GREEN)🎉 Projeto Konversia totalmente inicializado!$(NC)"
 	@echo "$(BLUE)Serviços rodando:$(NC)"
 	@echo "  - Laravel Sail: http://localhost"
+	@echo "  - Telescope: http://localhost/telescope"
+	@echo "  - Horizon: http://localhost/horizon"
 	@echo "  - WhatsApp Service: rodando em background"
 	@echo "  - Frontend dev server: rodando"
 	@echo "  - Queue worker: rodando em background"
@@ -120,5 +159,7 @@ status: ## Mostra status de todos os serviços
 	@cd konversia && $(SAIL) ps || echo "  Containers não encontrados"
 	@echo "$(YELLOW)WhatsApp Service:$(NC)"
 	@cd whatsapp-service && docker compose ps || echo "  Serviço não encontrado"
+	@echo "$(YELLOW)Redis:$(NC)"
+	@docker ps | grep redis || echo "  Redis não encontrado"
 	@echo "$(YELLOW)Processos em execução:$(NC)"
-	@ps aux | grep -E "(queue:work|schedule:work|npm)" | grep -v grep || echo "  Nenhum processo encontrado"
+	@ps aux | grep -E "(queue:work|schedule:work|horizon|npm)" | grep -v grep || echo "  Nenhum processo encontrado"
