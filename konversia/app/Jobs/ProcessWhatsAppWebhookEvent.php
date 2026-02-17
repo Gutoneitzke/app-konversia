@@ -20,11 +20,6 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    /**
-     * The queue to use for this job.
-     */
-    public string $queue = 'webhook';
-
     protected string $numberId;
     protected string $eventType;
     protected array $eventData;
@@ -37,6 +32,7 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
         $this->numberId = $numberId;
         $this->eventType = $eventType;
         $this->eventData = $eventData;
+        $this->onQueue('webhook');
     }
 
     /**
@@ -113,6 +109,14 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
 
                 case 'Receipt': // Confirmação de entrega/leitura
                     $this->processReceiptEvent($session, $whatsappNumber);
+                    break;
+
+                case 'HistorySync': // Sincronização de histórico de contatos
+                    $this->processHistorySyncEvent($session, $whatsappNumber);
+                    break;
+
+                case 'AppStateSyncComplete': // Conclusão da sincronização de estado
+                    $this->processAppStateSyncCompleteEvent($session, $whatsappNumber);
                     break;
 
                 default:
@@ -719,5 +723,135 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
         ]);
 
         return $message;
+    }
+
+    /**
+     * Processar evento de sincronização de histórico de contatos
+     */
+    protected function processHistorySyncEvent(WhatsAppSession $session, WhatsAppNumber $whatsappNumber): void
+    {
+        try {
+            $syncData = $this->eventData['Data'] ?? [];
+            $pushnames = $syncData['pushnames'] ?? [];
+            $syncType = $syncData['syncType'] ?? null;
+            $chunkOrder = $syncData['chunkOrder'] ?? null;
+
+            if (empty($pushnames)) {
+                Log::info('HistorySync sem pushnames', [
+                    'sync_type' => $syncType,
+                    'chunk_order' => $chunkOrder,
+                    'whatsapp_number_id' => $whatsappNumber->id
+                ]);
+                return;
+            }
+
+            $updatedCount = 0;
+            foreach ($pushnames as $pushnameData) {
+                $jid = $pushnameData['ID'] ?? null;
+                $pushname = $pushnameData['pushname'] ?? null;
+
+                if (!$jid || $pushname === null) {
+                    continue; // Pular entradas inválidas
+                }
+
+                // Buscar contato existente ou criar novo
+                $contact = Contact::where('whatsapp_number_id', $whatsappNumber->id)
+                    ->where('jid', $jid)
+                    ->first();
+
+                if (!$contact) {
+                    // Criar novo contato com o pushname
+                    $phoneNumber = explode('@', $jid)[0] ?? $jid;
+
+                    $contact = Contact::create([
+                        'company_id' => $whatsappNumber->company_id,
+                        'whatsapp_number_id' => $whatsappNumber->id,
+                        'jid' => $jid,
+                        'name' => $pushname ?: 'Contato',
+                        'phone_number' => $phoneNumber,
+                        'is_blocked' => false,
+                        'is_business' => false,
+                    ]);
+
+                    Log::info('Novo contato criado via HistorySync', [
+                        'contact_id' => $contact->id,
+                        'jid' => $jid,
+                        'pushname' => $pushname,
+                        'whatsapp_number_id' => $whatsappNumber->id
+                    ]);
+                } elseif ($contact->name !== $pushname && !empty($pushname)) {
+                    // Atualizar nome se mudou
+                    $oldName = $contact->name;
+                    $contact->update(['name' => $pushname]);
+
+                    Log::info('Nome do contato atualizado via HistorySync', [
+                        'contact_id' => $contact->id,
+                        'jid' => $jid,
+                        'old_name' => $oldName,
+                        'new_name' => $pushname,
+                        'whatsapp_number_id' => $whatsappNumber->id
+                    ]);
+                }
+
+                $updatedCount++;
+            }
+
+            Log::info('HistorySync processado', [
+                'sync_type' => $syncType,
+                'chunk_order' => $chunkOrder,
+                'pushnames_count' => count($pushnames),
+                'processed_count' => $updatedCount,
+                'whatsapp_number_id' => $whatsappNumber->id
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Erro ao processar HistorySync', [
+                'session_id' => $session->id,
+                'whatsapp_number_id' => $whatsappNumber->id,
+                'error' => $e->getMessage(),
+                'event_data' => $this->eventData
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Processar evento de conclusão da sincronização de estado da aplicação
+     */
+    protected function processAppStateSyncCompleteEvent(WhatsAppSession $session, WhatsAppNumber $whatsappNumber): void
+    {
+        try {
+            $name = $this->eventData['Name'] ?? null;
+            $version = $this->eventData['Version'] ?? null;
+            $recovery = $this->eventData['Recovery'] ?? false;
+
+            Log::info('AppStateSyncComplete processado', [
+                'name' => $name,
+                'version' => $version,
+                'recovery' => $recovery,
+                'whatsapp_number_id' => $whatsappNumber->id,
+                'session_id' => $session->id
+            ]);
+
+            // Marcar sessão como totalmente sincronizada se necessário
+            $metadata = $session->metadata ?? [];
+            $metadata['app_state_sync_complete'] = [
+                'name' => $name,
+                'version' => $version,
+                'recovery' => $recovery,
+                'completed_at' => now()->toISOString()
+            ];
+
+            $session->update(['metadata' => $metadata]);
+
+        } catch (\Exception $e) {
+            Log::error('Erro ao processar AppStateSyncComplete', [
+                'session_id' => $session->id,
+                'whatsapp_number_id' => $whatsappNumber->id,
+                'error' => $e->getMessage(),
+                'event_data' => $this->eventData
+            ]);
+            throw $e;
+        }
     }
 }

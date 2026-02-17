@@ -54,7 +54,7 @@ class UpdateConnectionStatus implements ShouldQueue
 
             // Atualizar status do número WhatsApp
             $whatsappNumber = $session->whatsappNumber;
-            
+
             if ($mappedStatus === 'connected') {
                 $whatsappNumber->updateStatus('connected');
             } elseif ($mappedStatus === 'error') {

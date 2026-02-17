@@ -16,11 +16,6 @@ class ConnectWhatsAppJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    /**
-     * The queue to use for this job.
-     */
-    public string $queue = 'automation';
-
     protected WhatsAppNumber $whatsappNumber;
 
     /**
@@ -29,6 +24,7 @@ class ConnectWhatsAppJob implements ShouldQueue
     public function __construct(WhatsAppNumber $whatsappNumber)
     {
         $this->whatsappNumber = $whatsappNumber;
+        $this->onQueue('automation');
     }
 
     /**

@@ -18,11 +18,6 @@ class SendWhatsAppMessage implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     /**
-     * The queue to use for this job.
-     */
-    public string $queue = 'outgoing';
-
-    /**
      * Lock configuration for preventing concurrent sends to the same number
      */
     private const LOCK_TIMEOUT = 30; // seconds
@@ -44,7 +39,9 @@ class SendWhatsAppMessage implements ShouldQueue
         public Message $message,
         public WhatsAppNumber $whatsappNumber,
         public string $to
-    ) {}
+    ) {
+        $this->onQueue('outgoing');
+    }
 
     public function handle(): void
     {
