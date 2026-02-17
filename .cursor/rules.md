@@ -178,3 +178,30 @@ Ao gerar código:
 - Considerar tanto Laravel quanto Go quando relevante.
 
 Se alguma solicitação conflitar com estas regras, PERGUNTAR antes de prosseguir.
+
+---
+
+## 11. DIRETRIZES DE DESENVOLVIMENTO COM IA
+
+### 🚫 NÃO FAZER COMMITS AUTOMÁTICOS
+- A IA NUNCA deve fazer commits (`git commit`) automaticamente
+- Commits são responsabilidade exclusiva do desenvolvedor
+- A IA deve apenas gerar código e informar que está pronto para commit
+
+### 🛠️ COMANDOS A SEREM USADOS
+- Para executar comandos Laravel: `cd konversia && ./vendor/bin/sail artisan ...`
+- Para executar comandos do sistema: `cd konversia && ./vendor/bin/sail ...`
+- Sempre navegar para a pasta `konversia` antes de executar comandos
+- Não usar comandos fora do ambiente Sail sem autorização
+
+### 🔧 DEPURAÇÃO
+- Adicionar logs de debug (`console.log`) quando necessário para identificar problemas
+- Usar cores de debug (ex: fundo vermelho) temporariamente para identificar elementos
+- Remover logs e estilos de debug após resolver o problema
+
+### 📋 RELATÓRIO DE IMPLEMENTAÇÃO
+Após implementar funcionalidades:
+- ✅ Listar todas as mudanças feitas
+- ✅ Indicar se está pronto para testes
+- ✅ Informar se há dependências ou próximos passos
+- ✅ NÃO fazer commits automaticamente
