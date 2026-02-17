@@ -51,12 +51,19 @@ const selectConversation = (conversation) => {
     url.searchParams.set('selected', conversation.id);
     window.history.replaceState({}, '', url.toString());
 
-    // Fazer requisição para carregar conversa completa com mensagens
-    router.reload({
-        only: ['selectedConversation'],
-        data: { selected: conversation.id },
+    // Marcar mensagens como lidas
+    router.post(route('conversations.mark-read', conversation.id), {}, {
         preserveState: true,
         preserveScroll: true,
+        onSuccess: () => {
+            // Após marcar como lidas, recarregar a conversa completa com mensagens
+            router.reload({
+                only: ['selectedConversation'],
+                data: { selected: conversation.id },
+                preserveState: true,
+                preserveScroll: true,
+            });
+        }
     });
 };
 
@@ -244,8 +251,15 @@ onUnmounted(() => {
                                                                     {{ conv.department?.name }}
                                                                     <span v-if="conv.assigned_user" class="ml-1">• {{ conv.assigned_user.name }}</span>
                                                                 </p>
-                                                                <p v-if="conv.messages && conv.messages.length > 0" class="text-sm text-gray-700 truncate">
-                                                                    {{ conv.messages[0].content }}
+                                                                <p class="text-sm text-gray-700 truncate">
+                                                                    <span v-if="conv.last_message">
+                                                                        <template v-if="conv.last_message.type === 'image'">📷 Imagem</template>
+                                                                        <template v-else-if="conv.last_message.type === 'audio'">🎤 Áudio</template>
+                                                                        <template v-else>{{ conv.last_message.content }}</template>
+                                                                    </span>
+                                                                    <span v-else class="text-gray-400">
+                                                                        Conversa iniciada
+                                                                    </span>
                                                                 </p>
                                                             </div>
 

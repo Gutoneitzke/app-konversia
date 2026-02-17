@@ -259,4 +259,16 @@ class Conversation extends Model
             'status' => 'pending',
         ], $conversationData));
     }
+
+    public function lastMessage()
+    {
+        return $this->hasOne(Message::class)->latestOfMany('id');
+    }
+
+    public function unreadMessages()
+    {
+        return $this->hasMany(Message::class)
+            ->where('direction', 'inbound')
+            ->whereNull('read_at');
+    }
 }
