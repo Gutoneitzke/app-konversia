@@ -51,6 +51,7 @@ onMounted(() => {
     statusInterval = setInterval(checkStatus, 3000);
 
     // Atualizar QR a cada 5 segundos (caso expire)
+    refreshQR();
     qrInterval = setInterval(refreshQR, 5000);
 });
 

@@ -23,6 +23,12 @@ return Application::configure(basePath: dirname(__DIR__))
             'company.access' => \App\Http\Middleware\CheckCompanyAccess::class,
         ]);
     })
+    ->withSchedule(function (\Illuminate\Console\Scheduling\Schedule $schedule): void {
+        // Verificar status das conexões WhatsApp a cada 5 minutos
+        $schedule->job(\App\Jobs\CheckWhatsAppConnectionsStatus::class)
+            ->everyFiveMinutes()
+            ->withoutOverlapping();
+    })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
     })->create();

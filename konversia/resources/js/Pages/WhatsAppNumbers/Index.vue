@@ -15,7 +15,6 @@ const connect = (number) => {
         preserveScroll: true,
         onFinish: () => {
             connecting.value[number.id] = false;
-            // O backend já redireciona para a tela de QR
         }
     });
 };

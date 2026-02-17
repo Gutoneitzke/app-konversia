@@ -107,14 +107,41 @@ class WhatsAppService
             }
 
             // Chamar serviço Go - DELETE /number
+            // Usar o JID da sessão em vez do JID atual do WhatsAppNumber
+            // pois o serviço Go pode ter armazenado o JID original da sessão
+            $jidToUse = $session->session_id ?: $whatsappNumber->jid;
+
+            Log::info('JID selecionado para desconexão', [
+                'jid_to_use' => $jidToUse,
+                'session_jid' => $session->session_id,
+                'whatsapp_jid' => $whatsappNumber->jid,
+                'used_session_jid' => !empty($session->session_id)
+            ]);
+
             $response = Http::withHeaders([
-                'X-Number-Id' => $whatsappNumber->jid
+                'X-Number-Id' => $jidToUse
             ])->delete("{$this->serviceUrl}/number");
 
             if ($response->successful()) {
                 $whatsappNumber->updateStatus('inactive');
                 $session->update(['status' => 'disconnected']);
                 return true;
+            }
+
+            // Se o erro for "the store doesn't contain a device JID", significa que já está desconectado
+            // Consideramos isso como sucesso e atualizamos o status
+            if ($response->status() === 500) {
+                $body = $response->body();
+                if (str_contains($body, "the store doesn't contain a device JID")) {
+                    Log::info('Número já estava desconectado no serviço Go, atualizando status local', [
+                        'whatsapp_number_id' => $whatsappNumber->id,
+                        'session_id' => $session->id
+                    ]);
+
+                    $whatsappNumber->updateStatus('inactive');
+                    $session->update(['status' => 'disconnected']);
+                    return true;
+                }
             }
 
             return false;
@@ -226,7 +253,7 @@ class WhatsAppService
         $session = WhatsAppSession::where('whatsapp_number_id', $whatsappNumber->id)
             ->whereNotNull('metadata->qr_code')
             ->where('metadata->qr_code', '!=', '')
-            ->latest('created_at')
+            ->orderBy('id', 'desc')
             ->first();
 
         if (!$session) {
@@ -264,6 +291,8 @@ class WhatsAppService
     public function saveQRCode(string $whatsappNumberId, string $qrCode): bool
     {
         try {
+            $this->removeOldQrcode($whatsappNumberId);
+
             $session = $this->getLastSession($whatsappNumberId);
 
             if (!$session) {
