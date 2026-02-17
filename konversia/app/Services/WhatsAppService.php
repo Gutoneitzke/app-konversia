@@ -61,11 +61,14 @@ class WhatsAppService
                 }
 
                 $whatsappNumber->updateStatus('connecting');
+
+                // ✅ Sempre atualizar a sessão com o JID correto
                 $session->update([
-                    'session_id' => $jid ?: $whatsappNumber->jid,
+                    'session_id' => $jid ?: $whatsappNumber->jid, // ✅ Sempre atualizar
                     'status' => 'connecting',
                     'metadata' => array_merge($session->metadata ?? [], [
-                        'service_id' => $jid
+                        'service_id' => $jid,
+                        'connected_at' => now()
                     ])
                 ]);
 

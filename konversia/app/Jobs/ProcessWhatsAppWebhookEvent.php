@@ -58,14 +58,17 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
                 return;
             }
 
-            $session = $this->getLastSession($whatsappNumber->id);
+            // ✅ Melhorado: Buscar sessão por múltiplos critérios
+            $session = $this->findSessionForWebhook($whatsappNumber->id, $this->numberId);
 
             if (!$session) {
-                Log::warning('Sessão ativa não encontrada para WhatsAppNumber', [
+                Log::warning('Sessão não encontrada para evento webhook', [
                     'whatsapp_number_id' => $whatsappNumber->id,
-                    'jid' => $this->numberId,
+                    'number_id' => $this->numberId,
                     'event_type' => $this->eventType,
-                    'total_sessions' => $whatsappNumber->sessions()->count()
+                    'total_sessions' => $whatsappNumber->sessions()->count(),
+                    'all_session_ids' => $whatsappNumber->sessions()->pluck('session_id')->toArray(),
+                    'all_service_ids' => $whatsappNumber->sessions()->pluck('metadata.service_id')->filter()->toArray()
                 ]);
                 return;
             }
@@ -143,6 +146,52 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
     {
         return WhatsAppSession::where('whatsapp_number_id', $whatsappNumberId)
             ->orderBy('id', 'desc')
+            ->first();
+    }
+
+    private function findSessionForWebhook(int $whatsappNumberId, string $webhookNumberId): ?WhatsAppSession
+    {
+        // 1. Primeiro tentar encontrar por session_id exato
+        $session = WhatsAppSession::where('whatsapp_number_id', $whatsappNumberId)
+            ->where('session_id', $webhookNumberId)
+            ->first();
+
+        if ($session) {
+            return $session;
+        }
+
+        // 2. Tentar encontrar por service_id nos metadados
+        $session = WhatsAppSession::where('whatsapp_number_id', $whatsappNumberId)
+            ->whereJsonContains('metadata->service_id', $webhookNumberId)
+            ->first();
+
+        if ($session) {
+            return $session;
+        }
+
+        // 3. Para JIDs com device ID (:XX@), tentar encontrar sessão com JID base
+        if (strpos($webhookNumberId, ':') !== false && strpos($webhookNumberId, '@') !== false) {
+            $baseJid = explode(':', $webhookNumberId)[0] . '@' . explode('@', $webhookNumberId)[1];
+
+            $session = WhatsAppSession::where('whatsapp_number_id', $whatsappNumberId)
+                ->where('session_id', $baseJid)
+                ->first();
+
+            if ($session) {
+                // Atualizar metadados com o device ID para futuras requisições
+                $session->update([
+                    'metadata' => array_merge($session->metadata ?? [], [
+                        'device_ids' => array_merge($session->metadata['device_ids'] ?? [], [$webhookNumberId])
+                    ])
+                ]);
+                return $session;
+            }
+        }
+
+        // 4. Fallback: pegar a última sessão ativa
+        return WhatsAppSession::where('whatsapp_number_id', $whatsappNumberId)
+            ->whereIn('status', ['connected', 'connecting'])
+            ->orderBy('updated_at', 'desc')
             ->first();
     }
 
