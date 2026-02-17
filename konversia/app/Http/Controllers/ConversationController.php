@@ -166,7 +166,8 @@ class ConversationController extends Controller
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
 
-        return response()->json(['success' => true]);
+        // Redirecionar de volta para a página de conversas com a conversa selecionada
+        return redirect()->route('conversations.index', ['selected' => $conversation->id]);
     }
 
     /**

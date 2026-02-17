@@ -16,6 +16,7 @@ const search = ref(props.filters.search);
 const statusFilter = ref(props.filters.status);
 const departmentFilter = ref(props.filters.department_id);
 const selectedConversationId = ref(props.selectedConversation?.id || null);
+const loadingConversation = ref(false);
 
 const applyFilters = () => {
     router.get(route('conversations.index'), {
@@ -46,23 +47,25 @@ watch([statusFilter, departmentFilter], () => {
 
 const selectConversation = (conversation) => {
     selectedConversationId.value = conversation.id;
-    // Atualizar URL sem recarregar página
-    const url = new URL(window.location);
-    url.searchParams.set('selected', conversation.id);
-    window.history.replaceState({}, '', url.toString());
+    loadingConversation.value = true;
 
-    // Marcar mensagens como lidas
+    // Timeout de segurança para evitar loading infinito
+    const loadingTimeout = setTimeout(() => {
+        if (loadingConversation.value) {
+            console.warn('Loading timeout reached, stopping loading state');
+            loadingConversation.value = false;
+        }
+    }, 10000); // 10 segundos de timeout
+
+    // Marcar mensagens como lidas e recarregar a página com Inertia
     router.post(route('conversations.mark-read', conversation.id), {}, {
         preserveState: true,
         preserveScroll: true,
         onSuccess: () => {
-            // Após marcar como lidas, recarregar a conversa completa com mensagens
-            router.reload({
-                only: ['selectedConversation'],
-                data: { selected: conversation.id },
-                preserveState: true,
-                preserveScroll: true,
-            });
+            loadingConversation.value = false;
+        },
+        onError: () => {
+            loadingConversation.value = false;
         }
     });
 };
@@ -268,8 +271,8 @@ onUnmounted(() => {
                                                                 <span :class="getStatusColor(conv.status)" class="px-1.5 py-0.5 text-xs font-medium rounded-full">
                                                                     {{ getStatusText(conv.status) }}
                                                                 </span>
-                                                                <span v-if="conv.unread_count > 0" class="bg-emerald-500 text-white text-xs font-semibold rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
-                                                                    {{ conv.unread_count > 99 ? '99+' : conv.unread_count }}
+                                                                <span v-if="conv.unread_messages_count > 0" class="bg-emerald-500 text-white text-xs font-semibold rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
+                                                                    {{ conv.unread_messages_count > 99 ? '99+' : conv.unread_messages_count }}
                                                                 </span>
                                                             </div>
                                                         </div>
@@ -294,12 +297,20 @@ onUnmounted(() => {
 
                         <!-- Área Principal - Chat -->
                         <div class="flex-1 flex flex-col">
-                            <div v-if="selectedConversation" class="h-full">
+                            <div v-if="selectedConversation && !loadingConversation" class="h-full">
                                 <ChatConversation
                                     :conversation="selectedConversation"
                                     :show-header="true"
                                     :show-back-button="false"
                                 />
+                            </div>
+
+                            <div v-else-if="loadingConversation" class="h-full flex items-center justify-center bg-gray-50">
+                                <div class="text-center">
+                                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mx-auto mb-4"></div>
+                                    <h3 class="text-lg font-medium text-gray-900 mb-2">Carregando conversa...</h3>
+                                    <p class="text-sm text-gray-500">Aguarde enquanto as mensagens são carregadas</p>
+                                </div>
                             </div>
 
                             <div v-else class="h-full flex items-center justify-center bg-gray-50">

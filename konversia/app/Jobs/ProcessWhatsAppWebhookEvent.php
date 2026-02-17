@@ -709,7 +709,7 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
                     now()->parse($messageInfo['Timestamp'])) :
                 now(),
             'delivered_at' => now(),
-            'read_at' => now(),
+            'read_at' => null, // Mensagens inbound não são lidas automaticamente
             'delivery_status' => 'delivered',
             'whatsapp_message_id' => $messageInfo['ID'] ?? null,
             'whatsapp_metadata' => $messageInfo,
