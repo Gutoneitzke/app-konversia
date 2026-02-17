@@ -20,6 +20,11 @@ class ProcessIncomingMessage implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    /**
+     * The queue to use for this job.
+     */
+    public string $queue = 'incoming';
+
     public function __construct(
         public string $sessionId,
         public string $from,

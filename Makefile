@@ -100,6 +100,26 @@ horizon-continue: ## Continua o Horizon
 	@echo "$(GREEN)Continuando Horizon...$(NC)"
 	cd konversia && $(SAIL) artisan horizon:continue
 
+queue-status: ## Mostra status das filas
+	@echo "$(BLUE)=== Status das Filas ===$(NC)"
+	@cd konversia && $(SAIL) artisan queue:monitor incoming,outgoing,automation,webhook --format=table || echo "  Comando não disponível"
+
+queue-clear: ## Limpa todas as filas
+	@echo "$(YELLOW)Limpando filas...$(NC)"
+	@cd konversia && $(SAIL) artisan queue:clear redis incoming || echo "  Fila incoming limpa"
+	@cd konversia && $(SAIL) artisan queue:clear redis outgoing || echo "  Fila outgoing limpa"
+	@cd konversia && $(SAIL) artisan queue:clear redis automation || echo "  Fila automation limpa"
+	@cd konversia && $(SAIL) artisan queue:clear redis webhook || echo "  Fila webhook limpa"
+	@echo "$(GREEN)Filas limpas!$(NC)"
+
+queue-monitor: ## Monitor avançado das filas WhatsApp
+	@echo "$(BLUE)Monitor Avançado das Filas WhatsApp$(NC)"
+	cd konversia && $(SAIL) artisan whatsapp:monitor-queues
+
+queue-monitor-json: ## Monitor das filas em formato JSON
+	@echo "$(BLUE)Monitor das Filas (JSON)$(NC)"
+	cd konversia && $(SAIL) artisan whatsapp:monitor-queues --format=json
+
 services: ## Roda queue, schedule e horizon simultaneamente
 	@echo "$(BLUE)Iniciando serviços em background...$(NC)"
 	@echo "$(YELLOW)Queue worker...$(NC)"

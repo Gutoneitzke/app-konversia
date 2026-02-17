@@ -14,6 +14,11 @@ class CheckWhatsAppConnectionsStatus implements ShouldQueue
     use Queueable;
 
     /**
+     * The queue to use for this job.
+     */
+    public string $queue = 'automation';
+
+    /**
      * Create a new job instance.
      */
     public function __construct()

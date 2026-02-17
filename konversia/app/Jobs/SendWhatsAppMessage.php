@@ -16,6 +16,11 @@ class SendWhatsAppMessage implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    /**
+     * The queue to use for this job.
+     */
+    public string $queue = 'outgoing';
+
     public function __construct(
         public Message $message,
         public WhatsAppNumber $whatsappNumber,

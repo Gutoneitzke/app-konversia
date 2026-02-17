@@ -24,15 +24,6 @@ make services   # Inicia queue, scheduler e horizon
 make npm-dev    # Inicia frontend
 ```
 
-### Usando Script Bash
-```bash
-# Inicializar tudo automaticamente
-./start-project.sh
-
-# Parar tudo
-./stop-project.sh
-```
-
 ## Comandos Individuais
 
 ### Laravel Sail + Ferramentas
@@ -117,6 +108,41 @@ cd konversia
 ./vendor/bin/sail artisan migrate:fresh --seed
 ```
 
+## Organização de Filas e Waits
+
+### 📋 Sistema de Filas
+
+O sistema utiliza múltiplas filas especializadas com Redis e Horizon para garantir performance e organização:
+
+#### 🧵 Filas Configuradas:
+
+| Fila | Propósito | Wait | Supervisor | Workers | Prioridade |
+|------|-----------|------|------------|---------|------------|
+| **incoming** | Mensagens recebidas | 30s | incoming-supervisor | 3-10 | 🔴 Alta |
+| **webhook** | Eventos WhatsApp | 15s | incoming-supervisor | 3-10 | 🔴 Crítica |
+| **outgoing** | Envio de mensagens | 60s | outgoing-supervisor | 1-3 | 🟡 Média |
+| **automation** | Bots e regras | 60s | automation-supervisor | 2-5 | 🟢 Baixa |
+
+#### ⏱️ Wait Times (Alertas de Congestionamento):
+- **incoming**: 30s - Mensagens precisam ser rápidas
+- **webhook**: 15s - Evitar reenvio duplicado
+- **outgoing**: 60s - Controle de taxa anti-ban
+- **automation**: 60s - Não crítico em tempo real
+
+### 🎯 Jobs por Fila:
+
+| Job | Fila | Descrição |
+|-----|------|-----------|
+| `ProcessIncomingMessage` | incoming | Processar mensagens recebidas |
+| `ProcessWhatsAppWebhookEvent` | webhook | Eventos de entrega/leitura |
+| `SendWhatsAppMessage` | outgoing | Envio de mensagens (com lock) |
+| `CheckWhatsAppConnectionsStatus` | automation | Verificação periódica de status |
+| `ConnectWhatsAppJob` | automation | Conexão de números |
+
+### ⚠️ Lock de Segurança (Envio de Mensagens):
+- Mesmo com filas, **nunca envie mensagens em paralelo** pelo mesmo número
+- Sistema usa lock Redis para evitar conflitos e bloqueios da conta WhatsApp
+
 ## Monitoramento e Debug
 
 ### Telescope (Debug/Inspeção)
@@ -189,8 +215,6 @@ app-konversia/
 │   └── .env
 ├── whatsapp-service/   # Serviço WhatsApp (Go)
 ├── Makefile           # Comandos automatizados
-├── start-project.sh   # Script de inicialização
-├── stop-project.sh    # Script de parada
 └── PROJECT-STARTUP.md # Esta documentação
 ```
 
@@ -219,6 +243,45 @@ lsof -i :3000
 sudo chown -R $USER:$USER .
 ```
 
+### Filas congestionadas
+```bash
+# Monitor avançado das filas WhatsApp
+make queue-monitor
+
+# Ver status das filas (Laravel padrão)
+make queue-status
+
+# Limpar filas congestionadas
+make queue-clear
+
+# Pausar processamento temporariamente
+make horizon-pause
+
+# Retomar processamento
+make horizon-continue
+```
+
+### Monitoramento em tempo real
+```bash
+# Monitor contínuo das filas (atualiza a cada 5s)
+watch -n 5 make queue-monitor
+
+# Ou em formato JSON para scripts
+make queue-monitor-json
+```
+
+### Jobs não processados
+```bash
+# Verificar se workers estão rodando
+make status
+
+# Reiniciar workers
+make services
+
+# Verificar logs do Laravel
+make logs
+```
+
 ### Redis não conecta
 ```bash
 # Verificar se Redis está rodando
@@ -238,9 +301,12 @@ make restart        # Reinicia containers
 make status         # Mostra status dos serviços
 make logs           # Logs dos containers
 make shell          # Acessa shell do Laravel
-make horizon        # Inicia Horizon
-make horizon-pause  # Pausa processamento de filas
-make horizon-continue # Retoma processamento
+  make horizon           # Inicia Horizon
+  make horizon-pause     # Pausa processamento de filas
+  make horizon-continue  # Retoma processamento
+  make queue-monitor     # Monitor avançado das filas WhatsApp
+  make queue-status      # Ver status das filas (Laravel)
+  make queue-clear       # Limpar filas congestionadas
 ```
 
 ---

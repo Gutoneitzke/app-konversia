@@ -20,6 +20,11 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    /**
+     * The queue to use for this job.
+     */
+    public string $queue = 'webhook';
+
     protected string $numberId;
     protected string $eventType;
     protected array $eventData;
