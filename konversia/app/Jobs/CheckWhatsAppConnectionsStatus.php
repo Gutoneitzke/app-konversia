@@ -89,23 +89,6 @@ class CheckWhatsAppConnectionsStatus implements ShouldQueue
         // Considerar desconectado se não estiver conectado OU não estiver logado
         $isFullyConnected = $isConnected && $isLoggedIn;
 
-        // Se está conectado no serviço Go e conectando no banco, acelerar para conectado
-        if ($isFullyConnected && $number->status === 'connecting') {
-            Log::info('Número conectado no serviço Go e conectando no banco - marcando como conectado', [
-                'whatsapp_number_id' => $number->id
-            ]);
-
-            $number->updateStatus('connected');
-
-            // Atualizar sessão se existir
-            $session = $number->sessions->first();
-            if ($session) {
-                $session->update(['status' => 'connected']);
-            }
-
-            return;
-        }
-
         // Se está desconectado no serviço Go mas conectado no banco
         if (!$isFullyConnected && in_array($number->status, ['connected', 'connecting', 'error'])) {
             Log::info('Número desconectado no serviço Go, atualizando status local', [

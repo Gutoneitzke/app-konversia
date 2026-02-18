@@ -701,6 +701,23 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
             // Se a conversa existe, verificar se precisa de atualizações
             $updates = ['last_message_at' => now()];
 
+            // Se a conversa está fechada ou resolvida, reabrir automaticamente
+            if (in_array($conversation->status, ['resolved', 'closed'])) {
+                $oldStatus = $conversation->status;
+                $updates['status'] = 'pending';
+                $updates['resolved_at'] = null;
+                $updates['resolved_by'] = null;
+                $updates['closed_at'] = null;
+                $updates['closed_by'] = null;
+
+                Log::info('Conversa reaberta automaticamente devido a nova mensagem', [
+                    'conversation_id' => $conversation->id,
+                    'contact_jid' => $chatJid,
+                    'old_status' => $oldStatus,
+                    'new_status' => 'pending'
+                ]);
+            }
+
             // Se a conversa está em um departamento diferente, transferir
             if ($conversation->department_id !== $department->id) {
                 Log::info('Transferindo conversa para departamento correto', [

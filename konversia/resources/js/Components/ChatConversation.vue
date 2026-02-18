@@ -37,6 +37,8 @@ const hasUnreadMessages = ref(false)
 const messagesContainer = ref(null)
 const showTransferModal = ref(false)
 const retryingMessages = ref({})
+const resolving = ref(false)
+const closing = ref(false)
 
 /**
  * Mensagens locais (NÃO muta props)
@@ -247,6 +249,70 @@ const retryMessage = (message) => {
     })
 }
 
+const resolveConversation = () => {
+    if (resolving.value) return
+
+    if (!confirm('Tem certeza que deseja resolver esta conversa?')) {
+        return
+    }
+
+    resolving.value = true
+
+    axios.post(route('conversations.resolve', props.conversation.id), {}, {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/json',
+        }
+    })
+    .then((response) => {
+        // Recarregar a página para atualizar o status
+        router.reload({
+            only: ['selectedConversation'],
+            preserveState: true,
+        })
+    })
+    .catch((error) => {
+        console.error('Erro ao resolver conversa:', error)
+        const errorMessage = error.response?.data?.message || 'Erro ao resolver conversa. Tente novamente.'
+        alert(errorMessage)
+    })
+    .finally(() => {
+        resolving.value = false
+    })
+}
+
+const closeConversation = () => {
+    if (closing.value) return
+
+    if (!confirm('Tem certeza que deseja fechar esta conversa?')) {
+        return
+    }
+
+    closing.value = true
+
+    axios.post(route('conversations.close', props.conversation.id), {}, {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/json',
+        }
+    })
+    .then((response) => {
+        // Recarregar a página para atualizar o status
+        router.reload({
+            only: ['selectedConversation'],
+            preserveState: true,
+        })
+    })
+    .catch((error) => {
+        console.error('Erro ao fechar conversa:', error)
+        const errorMessage = error.response?.data?.message || 'Erro ao fechar conversa. Tente novamente.'
+        alert(errorMessage)
+    })
+    .finally(() => {
+        closing.value = false
+    })
+}
+
 </script>
 
 <template>
@@ -288,15 +354,52 @@ const retryMessage = (message) => {
                         <span :class="getStatusColor(conversation.status)" class="px-2 py-1 text-xs font-semibold rounded-full">
                             {{ getStatusText(conversation.status) }}
                         </span>
-                        <button
-                            @click="openTransferModal"
-                            class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
-                        >
-                            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                            </svg>
-                            Transferir
-                        </button>
+                        <div class="flex items-center gap-2">
+                            <!-- Botão Resolver (só mostra se não estiver resolvida/fechada) -->
+                            <button
+                                v-if="conversation.status !== 'resolved' && conversation.status !== 'closed'"
+                                @click="resolveConversation"
+                                :disabled="resolving"
+                                class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <svg v-if="resolving" class="w-4 h-4 mr-1.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <svg v-else class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                {{ resolving ? 'Resolvendo...' : 'Resolver' }}
+                            </button>
+
+                            <!-- Botão Fechar (sempre mostra, exceto se já estiver fechada) -->
+                            <button
+                                v-if="conversation.status !== 'closed'"
+                                @click="closeConversation"
+                                :disabled="closing"
+                                class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <svg v-if="closing" class="w-4 h-4 mr-1.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 012h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <svg v-else class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                                {{ closing ? 'Fechando...' : 'Fechar' }}
+                            </button>
+
+                            <!-- Botão Transferir (sempre mostra) -->
+                            <button
+                                @click="openTransferModal"
+                                class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
+                            >
+                                <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                </svg>
+                                Transferir
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -427,7 +530,20 @@ const retryMessage = (message) => {
 
         <!-- Área de Envio -->
         <div class="flex-shrink-0 bg-white border-t border-gray-200 px-6 py-4 border-b border-gray-200">
-            <div class="flex items-center gap-3">
+            <!-- Conversa fechada/resolvida -->
+            <div v-if="conversation.status === 'resolved' || conversation.status === 'closed'" class="text-center py-4">
+                <div class="flex items-center justify-center gap-2 text-gray-500">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    <span class="text-sm">
+                        Esta conversa está {{ conversation.status === 'resolved' ? 'resolvida' : 'fechada' }} e não pode mais receber mensagens.
+                    </span>
+                </div>
+            </div>
+
+            <!-- Campo de envio ativo -->
+            <div v-else class="flex items-center gap-3">
                 <div class="flex-1">
                     <input
                         v-model="form.content"

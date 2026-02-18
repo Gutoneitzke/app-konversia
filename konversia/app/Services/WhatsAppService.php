@@ -196,26 +196,7 @@ class WhatsAppService
                 $isConnected = $data['IsConnected'];
                 $isLoggedIn = $data['IsLoggedIn'];
 
-                if ($isConnected && $isLoggedIn) {
-                    if (!$whatsappNumber->isConnected()) {
-                        $whatsappNumber->updateStatus('connected');
-                        if (!$session->connected_at) {
-                            $session->update(['connected_at' => now()]);
-                        }
-                    }
-
-                    if ($session->status !== 'connected') {
-                        $session->update(['status' => 'connected']);
-                    }
-                } elseif (!$isConnected || !$isLoggedIn) {
-                    // Se o serviço diz que não está conectado/logado
-                    if ($whatsappNumber->isConnected() || $whatsappNumber->status === 'connecting') {
-                        $whatsappNumber->updateStatus('inactive');
-                    }
-                    if ($session->status !== 'disconnected') {
-                        $session->update(['status' => 'disconnected']);
-                    }
-                }
+                // ✅ Removida confirmação automática - só confirmar via webhook "Connected"
 
                 return $data;
             }

@@ -290,4 +290,84 @@ class ConversationController extends Controller
         // Redirecionar de volta para a página de conversas sem filtros ou conversa selecionada
         return redirect()->to('/conversations')->with('success', 'Conversa transferida com sucesso');
     }
+
+    /**
+     * Resolver conversa
+     */
+    public function resolve(Request $request, Conversation $conversation)
+    {
+        $user = $request->user();
+
+        // Verificar se a conversa pertence à empresa do usuário
+        if ($conversation->company_id !== $user->company_id) {
+            abort(403, 'Acesso negado');
+        }
+
+        // Employee só pode resolver conversas dos seus departamentos
+        if ($user->isEmployee() && !$user->belongsToDepartment($conversation->department_id)) {
+            abort(403, 'Acesso negado');
+        }
+
+        // Só pode resolver conversas em andamento
+        if (!in_array($conversation->status, ['pending', 'in_progress'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Esta conversa já foi resolvida ou fechada'
+            ], 400);
+        }
+
+        // Resolver conversa
+        $conversation->resolve($user);
+
+        // Log da resolução
+        \Illuminate\Support\Facades\Log::info('Conversa resolvida', [
+            'conversation_id' => $conversation->id,
+            'resolved_by' => $user->name,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Conversa resolvida com sucesso'
+        ]);
+    }
+
+    /**
+     * Fechar conversa
+     */
+    public function close(Request $request, Conversation $conversation)
+    {
+        $user = $request->user();
+
+        // Verificar se a conversa pertence à empresa do usuário
+        if ($conversation->company_id !== $user->company_id) {
+            abort(403, 'Acesso negado');
+        }
+
+        // Employee só pode fechar conversas dos seus departamentos
+        if ($user->isEmployee() && !$user->belongsToDepartment($conversation->department_id)) {
+            abort(403, 'Acesso negado');
+        }
+
+        // Só pode fechar conversas que não estejam já fechadas
+        if ($conversation->status === 'closed') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Esta conversa já está fechada'
+            ], 400);
+        }
+
+        // Fechar conversa
+        $conversation->close($user);
+
+        // Log do fechamento
+        \Illuminate\Support\Facades\Log::info('Conversa fechada', [
+            'conversation_id' => $conversation->id,
+            'closed_by' => $user->name,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Conversa fechada com sucesso'
+        ]);
+    }
 }

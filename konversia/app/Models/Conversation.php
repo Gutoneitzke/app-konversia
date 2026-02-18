@@ -25,11 +25,17 @@ class Conversation extends Model
         'transferred_at',
         'transfer_notes',
         'last_message_at',
+        'resolved_at',
+        'resolved_by',
+        'closed_at',
+        'closed_by',
     ];
 
     protected $casts = [
         'transferred_at' => 'datetime',
         'last_message_at' => 'datetime',
+        'resolved_at' => 'datetime',
+        'closed_at' => 'datetime',
     ];
 
     // Relacionamentos
@@ -193,14 +199,22 @@ class Conversation extends Model
         return true;
     }
 
-    public function resolve(): void
+    public function resolve(?User $user = null): void
     {
-        $this->update(['status' => 'resolved']);
+        $this->update([
+            'status' => 'resolved',
+            'resolved_at' => now(),
+            'resolved_by' => $user?->id,
+        ]);
     }
 
-    public function close(): void
+    public function close(?User $user = null): void
     {
-        $this->update(['status' => 'closed']);
+        $this->update([
+            'status' => 'closed',
+            'closed_at' => now(),
+            'closed_by' => $user?->id,
+        ]);
     }
 
     public function getLatestMessage()
