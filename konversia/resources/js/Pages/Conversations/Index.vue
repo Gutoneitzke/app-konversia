@@ -200,7 +200,7 @@ onUnmounted(() => {
         <div class="">
             <div class="">
                 <!-- Layout Principal WhatsApp-style -->
-                <div class="bg-white shadow rounded-lg overflow-hidden" style="height: 92.4vh;">
+                <div class="bg-white shadow rounded-lg overflow-hidden" style="height: 88.5vh;">
                     <div class="flex h-full">
                         <!-- Sidebar - Lista de Conversas -->
                         <div class="w-1/3 bg-gray-50 border-r border-gray-200 flex flex-col">
