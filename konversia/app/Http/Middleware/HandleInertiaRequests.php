@@ -35,9 +35,20 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $user = $request->user();
+
+        // Carregar companhia com números WhatsApp para usuários não admin
+        if ($user && !$user->isSuperAdmin()) {
+            $user->load(['company.whatsappNumbers' => function ($query) {
+                $query->latest('updated_at');
+            }]);
+        }
+
         return [
             ...parent::share($request),
-            //
+            'auth' => [
+                'user' => $user,
+            ],
         ];
     }
 }

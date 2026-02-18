@@ -12,3 +12,8 @@ Route::get('/user', function (Request $request) {
 Route::prefix('whatsapp')->group(function () {
     Route::post('/event', [WhatsAppController::class, 'receiveEvent']);
 });
+
+// Rotas WhatsApp para usuários autenticados
+Route::middleware('auth:sanctum')->prefix('whatsapp')->group(function () {
+    Route::get('/status', [WhatsAppController::class, 'getStatus']);
+});

@@ -7,6 +7,7 @@ import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import NavLink from '@/Components/NavLink.vue';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink.vue';
+import WhatsAppConnectionAlert from '@/Components/WhatsAppConnectionAlert.vue';
 
 defineProps({
     title: String,
@@ -308,6 +309,12 @@ const logout = () => {
                     </div>
                 </div>
             </nav>
+
+            <!-- WhatsApp Connection Alert -->
+            <WhatsAppConnectionAlert
+                v-if="$page.props.auth.user.company && $page.props.auth.user.company.whatsapp_numbers && $page.props.auth.user.company.whatsapp_numbers.length > 0"
+                :whatsapp-number="$page.props.auth.user.company.whatsapp_numbers[0]"
+            />
 
             <!-- Page Heading -->
             <header v-if="$slots.header" class="bg-white/70 backdrop-blur-xl border-b border-white/20 shadow-lg relative z-10">
