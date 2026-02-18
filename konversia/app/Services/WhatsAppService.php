@@ -197,8 +197,8 @@ class WhatsAppService
                 $data = $response->json();
 
                 // Mapear status do serviço Go para status interno
-                $isConnected = $data['IsConnected'] ?? false;
-                $isLoggedIn = $data['IsLoggedIn'] ?? false;
+                $isConnected = $data['IsConnected'];
+                $isLoggedIn = $data['IsLoggedIn'];
 
                 if ($isConnected && $isLoggedIn) {
                     if (!$whatsappNumber->isConnected()) {

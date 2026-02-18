@@ -122,6 +122,14 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
                     $this->processAppStateSyncCompleteEvent($session, $whatsappNumber);
                     break;
 
+                case 'OfflineSyncPreview': // Pré-visualização de sincronização offline
+                    $this->processOfflineSyncPreviewEvent($session, $whatsappNumber);
+                    break;
+
+                case 'OfflineSyncCompleted': // Conclusão da sincronização offline
+                    $this->processOfflineSyncCompletedEvent($session, $whatsappNumber);
+                    break;
+
                 default:
                     Log::info('Evento WhatsApp não mapeado', [
                         'event_type' => $this->eventType,
@@ -913,6 +921,64 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
 
         } catch (\Exception $e) {
             Log::error('Erro ao processar AppStateSyncComplete', [
+                'session_id' => $session->id,
+                'whatsapp_number_id' => $whatsappNumber->id,
+                'error' => $e->getMessage(),
+                'event_data' => $this->eventData
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Processar evento de pré-visualização de sincronização offline
+     */
+    protected function processOfflineSyncPreviewEvent(WhatsAppSession $session, WhatsAppNumber $whatsappNumber): void
+    {
+        try {
+            $total = $this->eventData['Total'] ?? 0;
+            $appDataChanges = $this->eventData['AppDataChanges'] ?? 0;
+            $messages = $this->eventData['Messages'] ?? 0;
+            $notifications = $this->eventData['Notifications'] ?? 0;
+            $receipts = $this->eventData['Receipts'] ?? 0;
+
+            Log::info('OfflineSyncPreview processado', [
+                'total' => $total,
+                'app_data_changes' => $appDataChanges,
+                'messages' => $messages,
+                'notifications' => $notifications,
+                'receipts' => $receipts,
+                'whatsapp_number_id' => $whatsappNumber->id,
+                'session_id' => $session->id
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Erro ao processar OfflineSyncPreview', [
+                'session_id' => $session->id,
+                'whatsapp_number_id' => $whatsappNumber->id,
+                'error' => $e->getMessage(),
+                'event_data' => $this->eventData
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Processar evento de conclusão da sincronização offline
+     */
+    protected function processOfflineSyncCompletedEvent(WhatsAppSession $session, WhatsAppNumber $whatsappNumber): void
+    {
+        try {
+            $count = $this->eventData['Count'] ?? 0;
+
+            Log::info('OfflineSyncCompleted processado', [
+                'count' => $count,
+                'whatsapp_number_id' => $whatsappNumber->id,
+                'session_id' => $session->id
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Erro ao processar OfflineSyncCompleted', [
                 'session_id' => $session->id,
                 'whatsapp_number_id' => $whatsappNumber->id,
                 'error' => $e->getMessage(),

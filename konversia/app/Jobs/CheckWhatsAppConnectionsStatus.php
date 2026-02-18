@@ -75,16 +75,17 @@ class CheckWhatsAppConnectionsStatus implements ShouldQueue
             return;
         }
 
-        $isConnected = $status['is_connected'] ?? false;
+        $isConnected = $status['IsConnected'] ?? false;
+        $isLoggedIn = $status['IsLoggedIn'] ?? false;
 
         Log::info('Status obtido do serviço Go', [
             'whatsapp_number_id' => $number->id,
-            'is_connected' => $isConnected,
-            'current_status' => $number->status
+            'IsConnected' => $isConnected,
+            'IsLoggedIn' => $isLoggedIn
         ]);
 
         // Se está conectado no serviço Go e conectando no banco, acelerar para conectado
-        if ($isConnected && $number->status === 'connecting') {
+        if ($isLoggedIn && $number->status === 'connecting') {
             Log::info('Número conectado no serviço Go e conectando no banco - marcando como conectado', [
                 'whatsapp_number_id' => $number->id
             ]);
@@ -97,11 +98,11 @@ class CheckWhatsAppConnectionsStatus implements ShouldQueue
                 $session->update(['status' => 'connected']);
             }
 
-            return; // Já resolvido, não precisa continuar
+            return;
         }
 
         // Se está desconectado no serviço Go mas conectado no banco
-        if (!$isConnected && in_array($number->status, ['connected', 'connecting'])) {
+        if (!$isLoggedIn && in_array($number->status, ['connected', 'connecting'])) {
             Log::info('Número desconectado no serviço Go, atualizando status local', [
                 'whatsapp_number_id' => $number->id,
                 'old_status' => $number->status
@@ -116,7 +117,7 @@ class CheckWhatsAppConnectionsStatus implements ShouldQueue
             }
         }
         // Se está conectado no serviço Go mas desconectado no banco
-        elseif ($isConnected && $number->status === 'inactive') {
+        elseif ($isLoggedIn && $number->status === 'inactive') {
             Log::info('Número conectado no serviço Go, mas inativo no banco - reconectando', [
                 'whatsapp_number_id' => $number->id
             ]);
