@@ -110,15 +110,11 @@ class WhatsAppService
             }
 
             // Chamar serviço Go - DELETE /number
-            // Usar o JID da sessão em vez do JID atual do WhatsAppNumber
-            // pois o serviço Go pode ter armazenado o JID original da sessão
-            $jidToUse = $session->session_id ?: $whatsappNumber->jid;
+            $jidToUse = $whatsappNumber->jid;
 
             Log::info('JID selecionado para desconexão', [
                 'jid_to_use' => $jidToUse,
-                'session_jid' => $session->session_id,
                 'whatsapp_jid' => $whatsappNumber->jid,
-                'used_session_jid' => !empty($session->session_id)
             ]);
 
             $response = Http::withHeaders([

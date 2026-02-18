@@ -68,7 +68,7 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
                     'event_type' => $this->eventType,
                     'total_sessions' => $whatsappNumber->sessions()->count(),
                     'all_session_ids' => $whatsappNumber->sessions()->pluck('session_id')->toArray(),
-                    'all_service_ids' => $whatsappNumber->sessions()->pluck('metadata.service_id')->filter()->toArray()
+                    'all_service_ids' => $whatsappNumber->sessions()->pluck('metadata->service_id')->filter()->toArray()
                 ]);
                 return;
             }
