@@ -32,6 +32,7 @@ const props = defineProps({
 const form = useForm({ content: '' })
 const sending = ref(false)
 const loadingMessages = ref(true)
+const hasUnreadMessages = ref(false)
 
 const messagesContainer = ref(null)
 const showTransferModal = ref(false)
@@ -119,8 +120,18 @@ const getMessages = (showLoader = false) => {
             const updated = page.props.selectedConversation
 
             if (updated?.id === props.conversation.id) {
-                messages.value = updated.messages || []
-                scrollToBottom()
+                const previousLength = messages.value.length
+                const newMessages = updated.messages || []
+
+                messages.value = newMessages
+
+                if (newMessages.length > previousLength) {
+                    if (isAtBottom()) {
+                        scrollToBottom()
+                    } else {
+                        hasUnreadMessages.value = true
+                    }
+                }
             }
         },
         onFinish: () => {
@@ -128,6 +139,13 @@ const getMessages = (showLoader = false) => {
             isFetching = false
         }
     })
+}
+
+const isAtBottom = () => {
+    if (!messagesContainer.value) return true
+
+    const { scrollTop, scrollHeight, clientHeight } = messagesContainer.value
+    return scrollTop + clientHeight >= scrollHeight - 20
 }
 
 /* =======================
@@ -190,6 +208,18 @@ const handleTransferred = (transferData) => {
     showTransferModal.value = false
     console.log('Conversa transferida:', transferData)
 }
+
+const goToLatestMessages = () => {
+    scrollToBottom()
+    hasUnreadMessages.value = false
+}
+
+const handleScroll = () => {
+    if (isAtBottom()) {
+        hasUnreadMessages.value = false
+    }
+}
+
 </script>
 
 <template>
@@ -247,6 +277,17 @@ const handleTransferred = (transferData) => {
 
         <!-- Área de Mensagens -->
         <div class="flex-1 overflow-hidden bg-gray-50">
+            <div
+                v-if="hasUnreadMessages"
+                class="sticky top-2 z-10 flex justify-center"
+            >
+                <button
+                    @click="goToLatestMessages()"
+                    class="bg-emerald-500 text-white text-sm px-4 py-2 rounded-full shadow hover:bg-emerald-600 transition"
+                >
+                    📩 Nova mensagem não lida
+                </button>
+            </div>
             <div v-if="loadingMessages" class="h-full flex items-center justify-center">
                 <div class="animate-spin h-10 w-10 border-b-2 border-emerald-500 rounded-full" />
             </div>
@@ -254,6 +295,7 @@ const handleTransferred = (transferData) => {
             <div
                 v-else
                 ref="messagesContainer"
+                @scroll="handleScroll"
                 class="h-full overflow-y-auto px-6 py-4"
             >
                 <div v-if="messages.length" class="space-y-4">
