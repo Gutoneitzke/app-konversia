@@ -1,8 +1,11 @@
 <script setup>
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { onMounted, onUnmounted, ref, nextTick, watch } from 'vue';
-import TransferConversationModal from './TransferConversationModal.vue';
+import { Link, router, useForm } from '@inertiajs/vue3'
+import { onUnmounted, ref, nextTick, watch } from 'vue'
+import TransferConversationModal from './TransferConversationModal.vue'
 
+/* =======================
+   PROPS
+======================= */
 const props = defineProps({
     conversation: Object,
     showHeader: {
@@ -21,99 +24,41 @@ const props = defineProps({
         type: Array,
         default: () => []
     }
-});
+})
 
-const form = useForm({
-    content: '',
-});
+/* =======================
+   STATE
+======================= */
+const form = useForm({ content: '' })
+const sending = ref(false)
+const loadingMessages = ref(true)
 
-const sending = ref(false);
-const messagesContainer = ref(null);
-const showTransferModal = ref(false);
+const messagesContainer = ref(null)
+const showTransferModal = ref(false)
 
-const sendMessage = () => {
-    if (!form.content.trim()) return;
+/**
+ * Mensagens locais (NÃO muta props)
+ */
+const messages = ref([])
 
-    sending.value = true;
+/**
+ * Controle de polling
+ */
+let messagePollingInterval = null
+let isFetching = false
+const currentConversationId = ref(null)
 
-    form.post(route('conversations.messages.store', props.conversation.id), {
-        preserveScroll: true,
-        onSuccess: () => {
-            form.reset();
-            sending.value = false;
-            scrollToBottom();
-        },
-        onError: (errors) => {
-            sending.value = false;
-            console.error('Erro ao enviar mensagem:', errors);
-            alert('Erro ao enviar mensagem. Tente novamente.');
-        },
-        onFinish: () => {
-            sending.value = false;
-        }
-    });
-};
-
-onMounted(() => {
-    scrollToBottom();
-    startMessagePolling();
-});
-
-onUnmounted(() => {
-    stopMessagePolling();
-});
-
-// Polling para mensagens
-let messagePollingInterval = null;
-
-const startMessagePolling = () => {
-    if (messagePollingInterval) return;
-    getMessages();
-    messagePollingInterval = setInterval(() => {
-        getMessages();
-    }, 3000);
-};
-
-const getMessages = () => {
-    // Usar Inertia para fazer reload apenas da conversa selecionada
-    router.reload({
-        only: ['selectedConversation'],
-        data: { selected: props.conversation.id },
-        preserveState: true,
-        preserveScroll: true,
-        onSuccess: (page) => {
-            // Atualizar apenas as mensagens se a conversa ainda for a mesma
-            if (page.props.selectedConversation && page.props.selectedConversation.id === props.conversation.id) {
-                props.conversation.messages = page.props.selectedConversation.messages;
-            }
-        },
-        onError: (errors) => {
-            console.warn('Erro ao buscar mensagens atualizadas:', errors);
-        }
-    });
-};
-
-const stopMessagePolling = () => {
-    if (messagePollingInterval) {
-        clearInterval(messagePollingInterval);
-        messagePollingInterval = null;
-    }
-};
-
-// Fazer scroll quando mensagens mudarem
-watch(() => props.conversation?.messages, (newMessages, oldMessages) => {
-    if (newMessages && newMessages.length !== (oldMessages?.length || 0)) {
-        nextTick(() => scrollToBottom());
-    }
-}, { deep: true });
-
+/* =======================
+   HELPERS
+======================= */
 const scrollToBottom = () => {
     nextTick(() => {
         if (messagesContainer.value) {
-            messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
+            messagesContainer.value.scrollTop =
+                messagesContainer.value.scrollHeight
         }
-    });
-};
+    })
+}
 
 const formatMessageTime = (timestamp) => {
     return new Date(timestamp).toLocaleString('pt-BR', {
@@ -122,42 +67,134 @@ const formatMessageTime = (timestamp) => {
         year: 'numeric',
         hour: '2-digit',
         minute: '2-digit'
-    });
-};
+    })
+}
 
-const getStatusColor = (status) => {
-    const colors = {
-        'pending': 'bg-yellow-100 text-yellow-800',
-        'in_progress': 'bg-green-100 text-green-800',
-        'resolved': 'bg-gray-100 text-gray-800',
-        'closed': 'bg-red-100 text-red-800',
-    };
-    return colors[status] || 'bg-gray-100 text-gray-800';
-};
+const getStatusColor = (status) => ({
+    pending: 'bg-yellow-100 text-yellow-800',
+    in_progress: 'bg-green-100 text-green-800',
+    resolved: 'bg-gray-100 text-gray-800',
+    closed: 'bg-red-100 text-red-800'
+}[status] || 'bg-gray-100 text-gray-800')
 
-const getStatusText = (status) => {
-    const texts = {
-        'pending': 'Pendente',
-        'in_progress': 'Em Atendimento',
-        'resolved': 'Resolvida',
-        'closed': 'Fechada',
-    };
-    return texts[status] || status;
-};
+const getStatusText = (status) => ({
+    pending: 'Pendente',
+    in_progress: 'Em Atendimento',
+    resolved: 'Resolvida',
+    closed: 'Fechada'
+}[status] || status)
+
+/* =======================
+   POLLING
+======================= */
+const startMessagePolling = () => {
+    if (messagePollingInterval || !props.conversation?.id) return
+
+    getMessages(true)
+
+    messagePollingInterval = setInterval(() => {
+        getMessages(false)
+    }, 3000)
+}
+
+const stopMessagePolling = () => {
+    if (messagePollingInterval) {
+        clearInterval(messagePollingInterval)
+        messagePollingInterval = null
+    }
+}
+
+const getMessages = (showLoader = false) => {
+    if (isFetching) return
+    isFetching = true
+
+    if (showLoader) loadingMessages.value = true
+
+    router.reload({
+        only: ['selectedConversation'],
+        data: { selected: props.conversation.id },
+        preserveState: true,
+        preserveScroll: true,
+        onSuccess: (page) => {
+            const updated = page.props.selectedConversation
+
+            if (updated?.id === props.conversation.id) {
+                messages.value = updated.messages || []
+                scrollToBottom()
+            }
+        },
+        onFinish: () => {
+            loadingMessages.value = false
+            isFetching = false
+        }
+    })
+}
+
+/* =======================
+   WATCH (CHAVE DA SOLUÇÃO)
+======================= */
+watch(
+    () => props.conversation?.id,
+    (newId, oldId) => {
+        if (!newId || newId === oldId) return
+
+        loadingMessages.value = true
+        messages.value = props.conversation.messages || []
+
+        stopMessagePolling()
+        startMessagePolling()
+
+        currentConversationId.value = newId
+        nextTick(scrollToBottom)
+        loadingMessages.value = false
+    },
+    { immediate: true }
+)
+
+/* =======================
+   LIFECYCLE
+======================= */
+onUnmounted(() => {
+    stopMessagePolling()
+})
+
+/* =======================
+   ACTIONS
+======================= */
+const sendMessage = () => {
+    if (!form.content.trim()) return
+
+    sending.value = true
+
+    form.post(route('conversations.messages.store', props.conversation.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            form.reset()
+            scrollToBottom()
+        },
+        onError: (errors) => {
+            console.error('Erro ao enviar mensagem:', errors)
+            alert('Erro ao enviar mensagem. Tente novamente.')
+        },
+        onFinish: () => {
+            sending.value = false
+        }
+    })
+}
 
 const openTransferModal = () => {
-    showTransferModal.value = true;
-};
+    showTransferModal.value = true
+}
 
 const handleTransferred = (transferData) => {
-    showTransferModal.value = false;
-    // O backend redireciona automaticamente para a lista de conversas
-    console.log('Conversa transferida:', transferData);
-};
+    showTransferModal.value = false
+    console.log('Conversa transferida:', transferData)
+}
 </script>
 
 <template>
     <div class="flex flex-col h-full bg-white">
+
         <!-- Header da Conversa -->
         <div v-if="showHeader" class="flex-shrink-0 border-b border-gray-200 px-6 py-4">
             <div class="flex items-center justify-between">
@@ -167,12 +204,14 @@ const handleTransferred = (transferData) => {
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
                         </svg>
                     </Link>
+
                     <div class="flex items-center gap-3">
                         <div class="h-10 w-10 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 flex items-center justify-center">
                             <span class="text-white font-semibold text-sm">
                                 {{ (conversation.contact?.name || conversation.contact_name || 'Contato').charAt(0).toUpperCase() }}
                             </span>
                         </div>
+
                         <div>
                             <h2 class="font-semibold text-lg text-gray-900">
                                 {{ conversation.contact?.name || conversation.contact_name || 'Contato Desconhecido' }}
@@ -208,30 +247,47 @@ const handleTransferred = (transferData) => {
 
         <!-- Área de Mensagens -->
         <div class="flex-1 overflow-hidden bg-gray-50">
-            <div ref="messagesContainer" class="h-full overflow-y-auto px-6 py-4">
-                <div v-if="conversation.messages && conversation.messages.length > 0" class="space-y-4">
+            <div v-if="loadingMessages" class="h-full flex items-center justify-center">
+                <div class="animate-spin h-10 w-10 border-b-2 border-emerald-500 rounded-full" />
+            </div>
+
+            <div
+                v-else
+                ref="messagesContainer"
+                class="h-full overflow-y-auto px-6 py-4"
+            >
+                <div v-if="messages.length" class="space-y-4">
                     <div
-                        v-for="message in conversation.messages"
+                        v-for="message in messages"
                         :key="message.id"
                         :class="{
                             'flex justify-end': message.direction === 'outbound',
                             'flex justify-start': message.direction === 'inbound',
                         }"
                     >
-                        <div :class="{
-                            'bg-emerald-500 text-white': message.direction === 'outbound',
-                            'bg-white text-gray-900 shadow-sm': message.direction === 'inbound',
-                        }" class="max-w-[70%] rounded-2xl px-4 py-3 break-words">
-                            <div class="text-sm leading-relaxed">{{ message.content }}</div>
-                            <div :class="{
-                                'text-emerald-100': message.direction === 'outbound',
-                                'text-gray-500': message.direction === 'inbound',
-                            }" class="text-xs mt-2">
+                        <div
+                            :class="{
+                                'bg-emerald-500 text-white': message.direction === 'outbound',
+                                'bg-white text-gray-900 shadow-sm': message.direction === 'inbound',
+                            }"
+                            class="max-w-[70%] rounded-2xl px-4 py-3 break-words"
+                        >
+                            <div class="text-sm leading-relaxed">
+                                {{ message.content }}
+                            </div>
+                            <div
+                                :class="{
+                                    'text-emerald-100': message.direction === 'outbound',
+                                    'text-gray-500': message.direction === 'inbound',
+                                }"
+                                class="text-xs mt-2"
+                            >
                                 {{ formatMessageTime(message.sent_at) }}
                             </div>
                         </div>
                     </div>
                 </div>
+
                 <div v-else class="flex items-center justify-center h-full text-gray-500">
                     <div class="text-center">
                         <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

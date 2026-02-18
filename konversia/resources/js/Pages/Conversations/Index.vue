@@ -18,7 +18,6 @@ const search = ref(props.filters.search);
 const statusFilter = ref(props.filters.status);
 const departmentFilter = ref(props.filters.department_id);
 const selectedConversationId = ref(props.selectedConversation?.id || null);
-const loadingConversation = ref(false);
 
 const applyFilters = () => {
     router.get(route('conversations.index'), {
@@ -51,7 +50,6 @@ watch([statusFilter, departmentFilter], () => {
 
 const selectConversation = (conversation) => {
     selectedConversationId.value = conversation.id;
-    loadingConversation.value = true;
 
     // Construir URL com todos os parâmetros preservados
     const params = new URLSearchParams();
@@ -73,10 +71,6 @@ const selectConversation = (conversation) => {
         .catch((error) => {
             console.error('Erro ao marcar mensagens como lidas:', error);
         });
-
-    setTimeout(() => {
-        loadingConversation.value = false;
-    }, 3000);
 };
 
 const selectedConversation = computed(() => {
@@ -333,23 +327,14 @@ onUnmounted(() => {
 
                         <!-- Área Principal - Chat -->
                         <div class="flex-1 flex flex-col">
-                            <div v-if="selectedConversation && !loadingConversation" class="h-full">
+                            <div v-if="selectedConversation" class="h-full">
                                 <ChatConversation
                                     :conversation="selectedConversation"
                                     :show-header="true"
                                     :show-back-button="false"
                                     :departments="departments"
                                     :users="users"
-                                    @loaded-conversation="loadingConversation = false"
                                 />
-                            </div>
-
-                            <div v-else-if="loadingConversation" class="h-full flex items-center justify-center bg-gray-50">
-                                <div class="text-center">
-                                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mx-auto mb-4"></div>
-                                    <h3 class="text-lg font-medium text-gray-900 mb-2">Carregando conversa...</h3>
-                                    <p class="text-sm text-gray-500">Aguarde enquanto as mensagens são carregadas</p>
-                                </div>
                             </div>
 
                             <div v-else class="h-full flex items-center justify-center bg-gray-50">
