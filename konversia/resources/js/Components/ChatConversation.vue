@@ -1,6 +1,6 @@
 <script setup>
 import { Link, router, useForm } from '@inertiajs/vue3'
-import { onUnmounted, ref, nextTick, watch } from 'vue'
+import { onUnmounted, ref, nextTick, watch, onMounted } from 'vue'
 import TransferConversationModal from './TransferConversationModal.vue'
 
 /* =======================
@@ -39,8 +39,10 @@ const showTransferModal = ref(false)
 const retryingMessages = ref({})
 const resolving = ref(false)
 const closing = ref(false)
+const reopening = ref(false)
+const showDropdown = ref(false)
 
-/**
+/*/**
  * Mensagens locais (NÃO muta props)
  */
 const messages = ref([])
@@ -175,6 +177,20 @@ watch(
 /* =======================
    LIFECYCLE
 ======================= */
+onMounted(() => {
+    // Fechar dropdown ao clicar fora
+    const handleClickOutside = (event) => {
+        const dropdown = event.target.closest('.relative')
+        if (!dropdown) {
+            showDropdown.value = false
+        }
+    }
+    document.addEventListener('click', handleClickOutside)
+    onUnmounted(() => {
+        document.removeEventListener('click', handleClickOutside)
+    })
+})
+
 onUnmounted(() => {
     stopMessagePolling()
 })
@@ -313,6 +329,38 @@ const closeConversation = () => {
     })
 }
 
+const reopenConversation = () => {
+    if (reopening.value) return
+
+    if (!confirm('Tem certeza que deseja reabrir esta conversa?')) {
+        return
+    }
+
+    reopening.value = true
+
+    axios.post(route('conversations.reopen', props.conversation.id), {}, {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/json',
+        }
+    })
+    .then((response) => {
+        // Recarregar a página para atualizar o status
+        router.reload({
+            only: ['selectedConversation'],
+            preserveState: true,
+        })
+    })
+    .catch((error) => {
+        console.error('Erro ao reabrir conversa:', error)
+        const errorMessage = error.response?.data?.message || 'Erro ao reabrir conversa. Tente novamente.'
+        alert(errorMessage)
+    })
+    .finally(() => {
+        reopening.value = false
+    })
+}
+
 </script>
 
 <template>
@@ -355,49 +403,84 @@ const closeConversation = () => {
                             {{ getStatusText(conversation.status) }}
                         </span>
                         <div class="flex items-center gap-2">
-                            <!-- Botão Resolver (só mostra se não estiver resolvida/fechada) -->
+                            <!-- Dropdown de Ações (só mostra se conversa estiver ativa) -->
+                            <div v-if="conversation.status !== 'resolved' && conversation.status !== 'closed'" class="relative">
+                                <button
+                                    @click="showDropdown = !showDropdown"
+                                    class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
+                                >
+                                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
+                                    </svg>
+                                    Ações
+                                    <svg class="w-4 h-4 ml-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </button>
+
+                                <!-- Dropdown Menu -->
+                                <div
+                                    v-if="showDropdown"
+                                    @click.stop
+                                    class="absolute right-0 z-10 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg"
+                                >
+                                    <div class="py-1">
+                                        <!-- Resolver -->
+                                        <button
+                                            @click="resolveConversation(); showDropdown = false"
+                                            :disabled="resolving"
+                                            class="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            <svg class="w-4 h-4 mr-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            {{ resolving ? 'Resolvendo...' : 'Resolver' }}
+                                        </button>
+
+                                        <!-- Fechar -->
+                                        <button
+                                            @click="closeConversation(); showDropdown = false"
+                                            :disabled="closing"
+                                            class="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            <svg class="w-4 h-4 mr-3 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                            {{ closing ? 'Fechando...' : 'Fechar' }}
+                                        </button>
+
+                                        <div class="border-t border-gray-100"></div>
+
+                                        <!-- Transferir -->
+                                        <button
+                                            @click="openTransferModal(); showDropdown = false"
+                                            class="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                        >
+                                            <svg class="w-4 h-4 mr-3 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                            </svg>
+                                            Transferir
+                                        </button>
+                                    </div>
+                                </div>
+
+                            </div>
+
+                            <!-- Botão Reabrir (só mostra se estiver fechada ou resolvida) -->
                             <button
-                                v-if="conversation.status !== 'resolved' && conversation.status !== 'closed'"
-                                @click="resolveConversation"
-                                :disabled="resolving"
-                                class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                v-if="conversation.status === 'resolved' || conversation.status === 'closed'"
+                                @click="reopenConversation"
+                                :disabled="reopening"
+                                class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                <svg v-if="resolving" class="w-4 h-4 mr-1.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg v-if="reopening" class="w-4 h-4 mr-1.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
                                 <svg v-else class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                                 </svg>
-                                {{ resolving ? 'Resolvendo...' : 'Resolver' }}
-                            </button>
-
-                            <!-- Botão Fechar (sempre mostra, exceto se já estiver fechada) -->
-                            <button
-                                v-if="conversation.status !== 'closed'"
-                                @click="closeConversation"
-                                :disabled="closing"
-                                class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                <svg v-if="closing" class="w-4 h-4 mr-1.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 012h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                <svg v-else class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                                {{ closing ? 'Fechando...' : 'Fechar' }}
-                            </button>
-
-                            <!-- Botão Transferir (sempre mostra) -->
-                            <button
-                                @click="openTransferModal"
-                                class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
-                            >
-                                <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                                </svg>
-                                Transferir
+                                {{ reopening ? 'Reabrindo...' : 'Reabrir' }}
                             </button>
                         </div>
                     </div>

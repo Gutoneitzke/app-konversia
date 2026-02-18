@@ -370,4 +370,51 @@ class ConversationController extends Controller
             'message' => 'Conversa fechada com sucesso'
         ]);
     }
+
+    /**
+     * Reabrir conversa
+     */
+    public function reopen(Request $request, Conversation $conversation)
+    {
+        $user = $request->user();
+
+        // Verificar se a conversa pertence à empresa do usuário
+        if ($conversation->company_id !== $user->company_id) {
+            abort(403, 'Acesso negado');
+        }
+
+        // Employee só pode reabrir conversas dos seus departamentos
+        if ($user->isEmployee() && !$user->belongsToDepartment($conversation->department_id)) {
+            abort(403, 'Acesso negado');
+        }
+
+        // Só pode reabrir conversas que estão fechadas ou resolvidas
+        if (!in_array($conversation->status, ['resolved', 'closed'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Esta conversa já está aberta'
+            ], 400);
+        }
+
+        // Reabrir conversa - alterar status para pending
+        $conversation->update([
+            'status' => 'pending',
+            'resolved_at' => null,
+            'resolved_by' => null,
+            'closed_at' => null,
+            'closed_by' => null,
+        ]);
+
+        // Log da reabertura
+        \Illuminate\Support\Facades\Log::info('Conversa reaberta', [
+            'conversation_id' => $conversation->id,
+            'reopened_by' => $user->name,
+            'previous_status' => $conversation->status
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Conversa reaberta com sucesso'
+        ]);
+    }
 }

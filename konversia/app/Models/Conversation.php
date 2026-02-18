@@ -217,6 +217,17 @@ class Conversation extends Model
         ]);
     }
 
+    public function reopen(?User $user = null): void
+    {
+        $this->update([
+            'status' => 'pending',
+            'resolved_at' => null,
+            'resolved_by' => null,
+            'closed_at' => null,
+            'closed_by' => null,
+        ]);
+    }
+
     public function getLatestMessage()
     {
         return $this->messages()->latest('sent_at')->first();

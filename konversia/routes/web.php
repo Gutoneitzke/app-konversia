@@ -55,6 +55,7 @@ Route::middleware([
     Route::post('/conversations/{conversation}/transfer', [ConversationController::class, 'transfer'])->name('conversations.transfer');
     Route::post('/conversations/{conversation}/resolve', [ConversationController::class, 'resolve'])->name('conversations.resolve');
     Route::post('/conversations/{conversation}/close', [ConversationController::class, 'close'])->name('conversations.close');
+    Route::post('/conversations/{conversation}/reopen', [ConversationController::class, 'reopen'])->name('conversations.reopen');
     Route::post('/conversations/{conversation}/messages', [MessageController::class, 'store'])->name('conversations.messages.store');
     Route::post('/messages/{message}/retry', [MessageController::class, 'retry'])->name('messages.retry');
 
