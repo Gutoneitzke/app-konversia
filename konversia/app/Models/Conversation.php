@@ -149,32 +149,46 @@ class Conversation extends Model
         return true;
     }
 
-    public function transferTo(Department $department, User $transferredBy, ?User $assignTo = null, ?string $notes = null): bool
+    public function transferTo(Department $department, ?User $transferredBy = null, ?User $assignTo = null, ?string $notes = null): bool
     {
         if ($this->department_id === $department->id) {
             return false;
         }
 
-        // Criar registro de transferência
-        ConversationTransfer::create([
-            'conversation_id' => $this->id,
-            'from_department_id' => $this->department_id,
-            'to_department_id' => $department->id,
-            'from_user_id' => $transferredBy->id,
-            'assigned_to_user_id' => $assignTo?->id,
-            'notes' => $notes,
-            'transferred_at' => now(),
-        ]);
+        // Criar registro de transferência (apenas se houver usuário)
+        if ($transferredBy) {
+            ConversationTransfer::create([
+                'conversation_id' => $this->id,
+                'from_department_id' => $this->department_id,
+                'to_department_id' => $department->id,
+                'from_user_id' => $transferredBy->id,
+                'assigned_to_user_id' => $assignTo?->id,
+                'notes' => $notes,
+                'transferred_at' => now(),
+            ]);
+        }
 
         // Atualizar conversa
-        $this->update([
+        $updateData = [
             'department_id' => $department->id,
-            'assigned_to' => $assignTo?->id,
             'transferred_from_department_id' => $this->department_id,
             'transferred_at' => now(),
             'transfer_notes' => $notes,
-            'status' => $assignTo ? 'in_progress' : 'pending',
-        ]);
+        ];
+
+        // Só alterar assigned_to e status se houver usuário específico
+        if ($assignTo) {
+            $updateData['assigned_to'] = $assignTo->id;
+            $updateData['status'] = 'in_progress';
+        } elseif (!$transferredBy) {
+            // Para transferências automáticas, manter status atual
+            // Não alterar assigned_to
+        } else {
+            // Para transferências manuais sem assignTo, colocar como pending
+            $updateData['status'] = 'pending';
+        }
+
+        $this->update($updateData);
 
         return true;
     }

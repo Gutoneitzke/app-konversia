@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('conversations', function (Blueprint $table) {
-            // Remover constraint por department (sistema usa uma conversa por contato)
+            // Remover constraint que inclui department_id (sistema usa uma conversa por contato)
             $table->dropUnique('conversations_company_contact_jid_department_unique');
         });
     }
@@ -23,7 +23,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('conversations', function (Blueprint $table) {
-            // Recriar constraint por department
+            // Recriar constraint por department (se necessário reverter)
             $table->unique(['company_id', 'contact_jid', 'department_id'], 'conversations_company_contact_jid_department_unique');
         });
     }

@@ -664,10 +664,9 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
         // Determinar o departamento para esta mensagem
         $department = $this->getDepartmentForMessage($session, $contact, $chatJid);
 
-        // Buscar conversa existente por company_id, contact_jid e department_id
+        // Buscar conversa existente por company_id e contact_jid (único por design)
         $conversation = Conversation::where('company_id', $session->company_id)
             ->where('contact_jid', $chatJid)
-            ->where('department_id', $department->id)
             ->first();
 
         if (!$conversation) {
@@ -691,21 +690,40 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
                 'department_name' => $department->name
             ]);
         } else {
-            // Se a conversa existe mas está associada a uma sessão diferente, atualizar
-            if ($conversation->whatsapp_session_id !== $session->id) {
-                $conversation->update([
-                    'whatsapp_session_id' => $session->id,
-                    'contact_id' => $contact->id, // Atualizar contact_id se necessário
-                    'last_message_at' => now()
+            // Se a conversa existe, verificar se precisa de atualizações
+            $updates = ['last_message_at' => now()];
+
+            // Se a conversa está em um departamento diferente, transferir
+            if ($conversation->department_id !== $department->id) {
+                Log::info('Transferindo conversa para departamento correto', [
+                    'conversation_id' => $conversation->id,
+                    'from_department_id' => $conversation->department_id,
+                    'to_department_id' => $department->id,
+                    'contact_jid' => $chatJid
                 ]);
+
+                // Usar o método de transferência existente
+                $conversation->transferTo($department, null, null, 'Transferência automática via webhook');
+            }
+
+            // Se está associada a uma sessão diferente, atualizar
+            if ($conversation->whatsapp_session_id !== $session->id) {
+                $updates['whatsapp_session_id'] = $session->id;
+                $updates['contact_id'] = $contact->id;
 
                 Log::info('Conversa existente atualizada com nova sessão', [
                     'conversation_id' => $conversation->id,
                     'old_session_id' => $conversation->whatsapp_session_id,
                     'new_session_id' => $session->id,
-                    'contact_jid' => $chatJid,
-                    'department_id' => $department->id
+                    'contact_jid' => $chatJid
                 ]);
+            }
+
+            // Aplicar atualizações se houver
+            if (count($updates) > 1) { // Mais que apenas last_message_at
+                $conversation->update($updates);
+            } else {
+                $conversation->update(['last_message_at' => now()]);
             }
         }
 

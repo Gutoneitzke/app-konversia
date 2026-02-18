@@ -22,7 +22,7 @@ const whatsappNumber = ref(props.whatsappNumber);
 // Busca o status atualizado do servidor
 const fetchUpdatedStatus = async () => {
     try {
-        const response = await axios.get('/api/whatsapp/status');
+        const response = await axios.get('/whatsapp/status');
         if (response.data && response.data.whatsapp_number) {
             // Atualiza o estado reativo com os dados mais recentes
             whatsappNumber.value = response.data.whatsapp_number;

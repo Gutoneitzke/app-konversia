@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\WhatsAppController;
 use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\MessageController;
@@ -43,6 +44,9 @@ Route::middleware([
         Route::post('{whatsappNumber}/disconnect', 'disconnect')->name('disconnect');
         Route::get('{whatsappNumber}/status', 'checkStatus')->name('status');
     });
+
+    // Status do WhatsApp da empresa (usado pelo frontend)
+    Route::get('/whatsapp/status', [WhatsAppController::class, 'getStatus'])->name('whatsapp.status');
     // Conversas
     Route::resource('conversations', ConversationController::class)->only(['index', 'show']);
     Route::get('/conversations/{conversation}/messages', [ConversationController::class, 'getMessages'])->name('conversations.messages.index');

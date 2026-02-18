@@ -16,6 +16,7 @@ return new class extends Migration
             $table->foreignId('company_id')->constrained();
             $table->foreignId('whatsapp_session_id')->constrained();
             $table->foreignId('department_id')->constrained();
+            $table->foreignId('contact_id')->constrained();
             $table->string('contact_jid');
             $table->string('contact_name')->nullable();
             $table->enum('status', ['pending', 'in_progress', 'resolved', 'closed', 'transferred'])->default('pending');
