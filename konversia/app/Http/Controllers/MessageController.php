@@ -102,4 +102,62 @@ class MessageController extends Controller
             return back()->withErrors(['content' => 'Erro ao enviar mensagem: ' . $e->getMessage()]);
         }
     }
+
+    /**
+     * Reenviar mensagem falhada
+     */
+    public function retry(Request $request, Message $message)
+    {
+        $user = $request->user();
+
+        // Verificar permissão
+        if ($message->user_id !== $user->id) {
+            abort(403, 'Acesso negado a esta mensagem.');
+        }
+
+        // Validar se pode reenviar
+        if ($message->direction !== 'outbound' || $message->delivery_status !== 'failed') {
+            return response()->json([
+                'message' => 'Esta mensagem não pode ser reenviada.'
+            ], 400);
+        }
+
+        // Evita reenvio duplo
+        if ($message->delivery_status === 'pending') {
+            return response()->json([
+                'message' => 'Mensagem já está em tentativa de envio.'
+            ], 400);
+        }
+
+        try {
+            // Marca como pendente
+            $message->update([
+                'delivery_status' => 'pending',
+            ]);
+
+            $conversation = $message->conversation;
+            $to = $conversation->getContactJid();
+
+            $this->whatsappService->sendMessage($message, $to);
+
+            return response()->json([
+                'message' => 'Mensagem reenviada com sucesso.',
+                'data' => $message,
+            ], 200);
+
+        } catch (\Throwable $e) {
+            Log::error('Erro ao reenviar mensagem', [
+                'message_id' => $message->id,
+                'exception' => $e,
+            ]);
+
+            $message->update([
+                'delivery_status' => 'failed',
+            ]);
+
+            return response()->json([
+                'message' => 'Não foi possível reenviar a mensagem. Tente novamente.'
+            ], 500);
+        }
+    }
 }

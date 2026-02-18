@@ -54,6 +54,7 @@ Route::middleware([
     Route::post('/conversations/{conversation}/transfer', [ConversationController::class, 'transfer'])->name('conversations.transfer');
     Route::post('/conversations/{conversation}/transfer', [ConversationController::class, 'transfer'])->name('conversations.transfer');
     Route::post('/conversations/{conversation}/messages', [MessageController::class, 'store'])->name('conversations.messages.store');
+    Route::post('/messages/{message}/retry', [MessageController::class, 'retry'])->name('messages.retry');
 
     // Usuários (apenas para donos de empresa)
     Route::resource('users', UserController::class)->only(['index', 'store', 'show', 'update', 'destroy']);

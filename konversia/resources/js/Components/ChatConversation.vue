@@ -36,6 +36,7 @@ const hasUnreadMessages = ref(false)
 
 const messagesContainer = ref(null)
 const showTransferModal = ref(false)
+const retryingMessages = ref({})
 
 /**
  * Mensagens locais (NÃO muta props)
@@ -220,6 +221,32 @@ const handleScroll = () => {
     }
 }
 
+const retryMessage = (message) => {
+    if (retryingMessages.value[message.id]) return
+
+    retryingMessages.value[message.id] = true
+
+    axios.post(route('messages.retry', message.id), {}, {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/json',
+        }
+    })
+    // .then((response) => {
+    //     // Recarregar mensagens para mostrar o novo status
+    //     getMessages(true)
+    // })
+    .catch((error) => {
+        console.error('Erro ao reenviar mensagem:', error)
+        // Mostrar notificação de erro mais amigável
+        const errorMessage = error.response?.data?.message || 'Erro ao reenviar mensagem. Verifique sua conexão e tente novamente.'
+        alert(errorMessage)
+    })
+    .finally(() => {
+        retryingMessages.value[message.id] = false
+    })
+}
+
 </script>
 
 <template>
@@ -307,24 +334,80 @@ const handleScroll = () => {
                             'flex justify-start': message.direction === 'inbound',
                         }"
                     >
-                        <div
-                            :class="{
-                                'bg-emerald-500 text-white': message.direction === 'outbound',
-                                'bg-white text-gray-900 shadow-sm': message.direction === 'inbound',
-                            }"
-                            class="max-w-[70%] rounded-2xl px-4 py-3 break-words"
-                        >
-                            <div class="text-sm leading-relaxed">
-                                {{ message.content }}
-                            </div>
+                        <div class="max-w-[70%] break-words">
+                            <!-- Mensagem falhada -->
                             <div
-                                :class="{
-                                    'text-emerald-100': message.direction === 'outbound',
-                                    'text-gray-500': message.direction === 'inbound',
-                                }"
-                                class="text-xs mt-2"
+                                v-if="message.delivery_status === 'failed' && message.direction === 'outbound'"
+                                class="bg-red-50 rounded-2xl px-4 py-3 relative"
                             >
-                                {{ formatMessageTime(message.sent_at) }}
+                                <!-- Ícone de erro no topo direito -->
+                                <div class="absolute -top-1 -right-1 bg-red-500 rounded-full p-1">
+                                    <svg class="h-3 w-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                    </svg>
+                                </div>
+
+                                <div class="text-red-900 text-sm leading-relaxed pr-6">
+                                    {{ message.content }}
+                                </div>
+                                <div class="flex items-center justify-between mt-2 pr-6">
+                                    <span class="text-red-600 text-xs">
+                                        Não enviada.
+                                    </span>
+                                    <button
+                                        @click="retryMessage(message)"
+                                        class="text-red-600 hover:text-red-800 text-xs underline transition-colors"
+                                        :disabled="retryingMessages[message.id]"
+                                        :class="{ 'opacity-50 cursor-not-allowed': retryingMessages[message.id] }"
+                                    >
+                                        <span v-if="retryingMessages[message.id]">Tentando...</span>
+                                        <span v-else>Tentar novamente</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Mensagem enviada com sucesso -->
+                            <div
+                                v-else
+                                :class="{
+                                    'bg-emerald-500 text-white': message.direction === 'outbound',
+                                    'bg-white text-gray-900 shadow-sm': message.direction === 'inbound',
+                                }"
+                                class="rounded-2xl px-4 py-3"
+                            >
+                                <div class="text-sm leading-relaxed">
+                                    {{ message.content }}
+                                </div>
+                                <div class="flex items-center justify-between mt-2">
+                                    <div
+                                        :class="{
+                                            'text-emerald-100': message.direction === 'outbound',
+                                            'text-gray-500': message.direction === 'inbound',
+                                        }"
+                                        class="text-xs"
+                                    >
+                                        {{ formatMessageTime(message.sent_at) }}
+                                    </div>
+
+                                    <!-- Indicador de status para mensagens outbound -->
+                                    <div v-if="message.direction === 'outbound'" class="text-xs flex items-center ml-1">
+                                        <span v-if="message.delivery_status === 'pending'" class="text-gray-400">
+                                            <svg class="h-3 w-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" class="opacity-25"></circle>
+                                                <path fill="none" stroke="currentColor" stroke-width="2" class="opacity-75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                        </span>
+                                        <span v-else-if="message.delivery_status === 'sent'" class="text-gray-400">
+                                            ✓
+                                        </span>
+                                        <span v-else-if="message.delivery_status === 'delivered'" class="text-gray-400">
+                                            ✓✓
+                                        </span>
+                                        <span v-else-if="message.delivery_status === 'read'" class="text-blue-500">
+                                            ✓✓
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
