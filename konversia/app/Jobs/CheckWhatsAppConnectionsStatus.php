@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Jobs\ConnectWhatsAppJob;
 use App\Models\WhatsAppNumber;
 use App\Models\WhatsAppSession;
 use App\Services\WhatsAppService;
@@ -28,8 +29,9 @@ class CheckWhatsAppConnectionsStatus implements ShouldQueue
     {
         Log::info('Iniciando verificação periódica do status das conexões WhatsApp');
 
-        // Buscar todos os números que estão marcados como conectados ou conectando
-        $numbers = WhatsAppNumber::whereIn('status', ['connected', 'connecting'])
+        // Buscar todos os números que estão marcados como conectados, conectando ou com erro
+        // (incluir 'error' para casos onde houve desconexão não detectada)
+        $numbers = WhatsAppNumber::whereIn('status', ['connected', 'connecting', 'error'])
             ->with(['sessions' => function ($query) {
                 $query->orderBy('id', 'desc');
             }])
@@ -84,8 +86,11 @@ class CheckWhatsAppConnectionsStatus implements ShouldQueue
             'IsLoggedIn' => $isLoggedIn
         ]);
 
+        // Considerar desconectado se não estiver conectado OU não estiver logado
+        $isFullyConnected = $isConnected && $isLoggedIn;
+
         // Se está conectado no serviço Go e conectando no banco, acelerar para conectado
-        if ($isLoggedIn && $number->status === 'connecting') {
+        if ($isFullyConnected && $number->status === 'connecting') {
             Log::info('Número conectado no serviço Go e conectando no banco - marcando como conectado', [
                 'whatsapp_number_id' => $number->id
             ]);
@@ -102,7 +107,7 @@ class CheckWhatsAppConnectionsStatus implements ShouldQueue
         }
 
         // Se está desconectado no serviço Go mas conectado no banco
-        if (!$isLoggedIn && in_array($number->status, ['connected', 'connecting'])) {
+        if (!$isFullyConnected && in_array($number->status, ['connected', 'connecting', 'error'])) {
             Log::info('Número desconectado no serviço Go, atualizando status local', [
                 'whatsapp_number_id' => $number->id,
                 'old_status' => $number->status
@@ -115,9 +120,12 @@ class CheckWhatsAppConnectionsStatus implements ShouldQueue
             if ($session) {
                 $session->update(['status' => 'disconnected']);
             }
+
+            // Tentar reconexão automática
+            $this->attemptReconnection($number, $whatsappService);
         }
         // Se está conectado no serviço Go mas desconectado no banco
-        elseif ($isLoggedIn && $number->status === 'inactive') {
+        elseif ($isFullyConnected && $number->status === 'inactive') {
             Log::info('Número conectado no serviço Go, mas inativo no banco - reconectando', [
                 'whatsapp_number_id' => $number->id
             ]);
@@ -133,6 +141,29 @@ class CheckWhatsAppConnectionsStatus implements ShouldQueue
 
             Log::info('Status reconectado automaticamente', [
                 'whatsapp_number_id' => $number->id
+            ]);
+        }
+    }
+
+    /**
+     * Tentar reconexão automática de um número WhatsApp desconectado
+     */
+    private function attemptReconnection(WhatsAppNumber $number, WhatsAppService $whatsappService): void
+    {
+        try {
+            Log::info('Enfileirando reconexão automática do WhatsApp', [
+                'whatsapp_number_id' => $number->id,
+                'jid' => $number->jid
+            ]);
+
+            // Enfileirar job de conexão para reconexão automática
+            ConnectWhatsAppJob::dispatch($number, null);
+
+        } catch (\Exception $e) {
+            Log::error('Erro ao enfileirar reconexão automática', [
+                'whatsapp_number_id' => $number->id,
+                'jid' => $number->jid,
+                'error' => $e->getMessage()
             ]);
         }
     }
