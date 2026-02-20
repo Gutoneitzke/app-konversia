@@ -72,6 +72,7 @@ func fulfillMessage(ctx context.Context, client *whatsmeow.Client, message *waE2
 	if err != nil {
 		return err
 	}
+	defer r.Close()
 
 	resp, err := client.UploadReader(ctx, r, nil, mediaType)
 	if err != nil {
@@ -111,7 +112,7 @@ func fulfillMessage(ctx context.Context, client *whatsmeow.Client, message *waE2
 	return nil
 }
 
-func downloadFromURL(ctx context.Context, url string) (io.Reader, error) {
+func downloadFromURL(ctx context.Context, url string) (io.ReadCloser, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
