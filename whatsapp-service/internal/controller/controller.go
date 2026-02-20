@@ -170,6 +170,7 @@ func NotifyWebhook(id string, data any) {
 		log.Println("error sending request", err.Error())
 		return
 	}
+	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
 		log.Println("error sending request", res.Status)
