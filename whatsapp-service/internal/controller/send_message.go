@@ -50,33 +50,13 @@ func (ctrl *Controller) SendMessage(ctx *echo.Context) error {
 }
 
 func fulfillMessage(ctx context.Context, client *whatsmeow.Client, message *waE2E.Message) error {
-	var url string
-	var mediaType whatsmeow.MediaType
-	if i := message.ImageMessage; i != nil {
-		url = *i.URL
-		mediaType = whatsmeow.MediaImage
-	} else if v := message.VideoMessage; v != nil {
-		url = *v.URL
-		mediaType = whatsmeow.MediaVideo
-	} else if a := message.AudioMessage; a != nil {
-		url = *a.URL
-		mediaType = whatsmeow.MediaAudio
-	} else if d := message.DocumentMessage; d != nil {
-		url = *d.URL
-		mediaType = whatsmeow.MediaDocument
-	} else {
+	resp, err := uploadToWhatsApp(ctx, client, message)
+	if err != nil {
+		return err
+	}
+
+	if resp == nil {
 		return nil
-	}
-
-	r, err := downloadFromURL(ctx, url)
-	if err != nil {
-		return err
-	}
-	defer r.Close()
-
-	resp, err := client.UploadReader(ctx, r, nil, mediaType)
-	if err != nil {
-		return err
 	}
 
 	if i := message.ImageMessage; i != nil {
@@ -110,6 +90,39 @@ func fulfillMessage(ctx context.Context, client *whatsmeow.Client, message *waE2
 	}
 
 	return nil
+}
+
+func uploadToWhatsApp(ctx context.Context, client *whatsmeow.Client, message *waE2E.Message) (*whatsmeow.UploadResponse, error) {
+	var url string
+	var mediaType whatsmeow.MediaType
+	if i := message.ImageMessage; i != nil {
+		url = *i.URL
+		mediaType = whatsmeow.MediaImage
+	} else if v := message.VideoMessage; v != nil {
+		url = *v.URL
+		mediaType = whatsmeow.MediaVideo
+	} else if a := message.AudioMessage; a != nil {
+		url = *a.URL
+		mediaType = whatsmeow.MediaAudio
+	} else if d := message.DocumentMessage; d != nil {
+		url = *d.URL
+		mediaType = whatsmeow.MediaDocument
+	} else {
+		return nil, nil
+	}
+
+	r, err := downloadFromURL(ctx, url)
+	if err != nil {
+		return nil, nil
+	}
+	defer r.Close()
+
+	resp, err := client.UploadReader(ctx, r, nil, mediaType)
+	if err != nil {
+		return nil, nil
+	}
+
+	return &resp, err
 }
 
 func downloadFromURL(ctx context.Context, url string) (io.ReadCloser, error) {
