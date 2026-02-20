@@ -56,6 +56,29 @@ X-Number-Id: {{number-id}}
 
 {
 	"To": "{{to}}",
-	"Message": "{{message}}"
+	"Message": {
+	    "Conversation": "Hello, World!",
+	    "ImageMessage": {
+	        "Caption": "Hello, Image!",
+	        "Mimetype": "image/png",
+	        "URL": "https://website.com/image.png"
+	    },
+	    "VideoMessage": {
+	        "Caption": "Hello, Video!",
+	        "Mimetype": "video/mp4",
+	        "URL": "https://website.com/video.mp4"
+	    },
+	    "AudioMessage": {
+	        "Mimetype": "audio/mp3",
+	        "URL": "https://website.com/audio.mp3",
+	        "PTT": true
+	    },
+	    "DocumentMessage": {
+	        "Title": "Hello, Document!",
+	        "FileName": "document.pdf",
+	        "Mimetype": "document/pdf",
+	        "URL": "https://website.com/document.pdf"
+	    }
+	}
 }
 ```
