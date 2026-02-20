@@ -46,8 +46,8 @@ X-Number-Id: {{number-id}}
 ### Send Message
 
 - **number-id** is the unique identifier for the number created
-- **To** is the phone number to send the message to
-- **Message** is the message to send; you should typically populate only one of the following primary content fields per
+- **to** is the phone number to send the message to
+- **message** is the message to send; you should typically populate only one of the following primary content fields per
   request:
   - **Conversation**: A simple plain-text message.
   - **ImageMessage**:
