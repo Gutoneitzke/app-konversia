@@ -50,43 +50,43 @@ func (ctrl *Controller) SendMessage(ctx *echo.Context) error {
 }
 
 func fulfillMessage(ctx context.Context, client *whatsmeow.Client, message *waE2E.Message) error {
-	resp, err := uploadToWhatsApp(ctx, client, message)
+	uploaded, err := uploadToWhatsApp(ctx, client, message)
 	if err != nil {
 		return err
 	}
 
-	if resp == nil {
+	if uploaded == nil {
 		return nil
 	}
 
 	if i := message.ImageMessage; i != nil {
-		i.URL = &resp.URL
-		i.DirectPath = &resp.DirectPath
-		i.MediaKey = resp.MediaKey
-		i.FileEncSHA256 = resp.FileEncSHA256
-		i.FileSHA256 = resp.FileSHA256
-		i.FileLength = &resp.FileLength
+		i.URL = &uploaded.URL
+		i.DirectPath = &uploaded.DirectPath
+		i.MediaKey = uploaded.MediaKey
+		i.FileEncSHA256 = uploaded.FileEncSHA256
+		i.FileSHA256 = uploaded.FileSHA256
+		i.FileLength = &uploaded.FileLength
 	} else if v := message.VideoMessage; v != nil {
-		v.URL = &resp.URL
-		v.DirectPath = &resp.DirectPath
-		v.MediaKey = resp.MediaKey
-		v.FileEncSHA256 = resp.FileEncSHA256
-		v.FileSHA256 = resp.FileSHA256
-		v.FileLength = &resp.FileLength
+		v.URL = &uploaded.URL
+		v.DirectPath = &uploaded.DirectPath
+		v.MediaKey = uploaded.MediaKey
+		v.FileEncSHA256 = uploaded.FileEncSHA256
+		v.FileSHA256 = uploaded.FileSHA256
+		v.FileLength = &uploaded.FileLength
 	} else if a := message.AudioMessage; a != nil {
-		a.URL = &resp.URL
-		a.DirectPath = &resp.DirectPath
-		a.MediaKey = resp.MediaKey
-		a.FileEncSHA256 = resp.FileEncSHA256
-		a.FileSHA256 = resp.FileSHA256
-		a.FileLength = &resp.FileLength
+		a.URL = &uploaded.URL
+		a.DirectPath = &uploaded.DirectPath
+		a.MediaKey = uploaded.MediaKey
+		a.FileEncSHA256 = uploaded.FileEncSHA256
+		a.FileSHA256 = uploaded.FileSHA256
+		a.FileLength = &uploaded.FileLength
 	} else if d := message.DocumentMessage; d != nil {
-		d.URL = &resp.URL
-		d.DirectPath = &resp.DirectPath
-		d.MediaKey = resp.MediaKey
-		d.FileEncSHA256 = resp.FileEncSHA256
-		d.FileSHA256 = resp.FileSHA256
-		d.FileLength = &resp.FileLength
+		d.URL = &uploaded.URL
+		d.DirectPath = &uploaded.DirectPath
+		d.MediaKey = uploaded.MediaKey
+		d.FileEncSHA256 = uploaded.FileEncSHA256
+		d.FileSHA256 = uploaded.FileSHA256
+		d.FileLength = &uploaded.FileLength
 	}
 
 	return nil
@@ -117,12 +117,12 @@ func uploadToWhatsApp(ctx context.Context, client *whatsmeow.Client, message *wa
 	}
 	defer r.Close()
 
-	resp, err := client.UploadReader(ctx, r, nil, mediaType)
+	uploaded, err := client.UploadReader(ctx, r, nil, mediaType)
 	if err != nil {
 		return nil, nil
 	}
 
-	return &resp, err
+	return &uploaded, err
 }
 
 func downloadFromURL(ctx context.Context, url string) (io.ReadCloser, error) {
