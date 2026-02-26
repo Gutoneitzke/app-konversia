@@ -29,6 +29,7 @@ class Message extends Model
         'delivered_at',
         'read_at',
         'delivery_status',
+        'error_message',
         'reply_to_message_id',
         'whatsapp_message_id',
         'whatsapp_metadata',
@@ -41,6 +42,10 @@ class Message extends Model
         'delivered_at' => 'datetime',
         'read_at' => 'datetime',
         'file_size' => 'integer',
+    ];
+
+    protected $appends = [
+        'file_url',
     ];
 
     // Relacionamentos
@@ -132,7 +137,8 @@ class Message extends Model
             return null;
         }
 
-        return Storage::disk('public')->url($this->file_path);
+        // Return relative URL so it works in both container and host environments
+        return '/storage/' . $this->file_path;
     }
 
     public function getFileUrlAttribute(): ?string

@@ -12,6 +12,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class SendWhatsAppMessage implements ShouldQueue
 {
@@ -117,12 +118,15 @@ class SendWhatsAppMessage implements ShouldQueue
         try {
             $whatsappServiceUrl = env('WHATSAPP_SERVICE_URL', 'http://localhost:8080');
 
+            // Preparar payload baseado no tipo de mensagem
+            $messagePayload = $this->prepareMessagePayload();
+
             // Usar nova API Go: POST /number/message com X-Number-Id header (usa o JID)
             $response = Http::timeout(25)->retry(2, 100)->withHeaders([
                 'X-Number-Id' => $this->whatsappNumber->jid
             ])->post("{$whatsappServiceUrl}/number/message", [
                 'To' => $this->to,
-                'Message' => $this->message->content
+                'Message' => $messagePayload
             ]);
 
             if ($response->successful()) {
@@ -138,8 +142,12 @@ class SendWhatsAppMessage implements ShouldQueue
                     'jid' => $this->whatsappNumber->jid
                 ]);
             } else {
+                // Extrair mensagem de erro específica da resposta
+                $errorMessage = $this->extractErrorMessage($response);
+
                 $this->message->update([
-                    'delivery_status' => 'failed'
+                    'delivery_status' => 'failed',
+                    'error_message' => $errorMessage
                 ]);
 
                 Log::error('Erro ao enviar mensagem via WhatsApp', [
@@ -147,7 +155,8 @@ class SendWhatsAppMessage implements ShouldQueue
                     'whatsapp_number_id' => $this->whatsappNumber->id,
                     'jid' => $this->whatsappNumber->jid,
                     'error' => $response->body(),
-                    'status' => $response->status()
+                    'status' => $response->status(),
+                    'extracted_error' => $errorMessage
                 ]);
 
                 // Para erros críticos, pode ser útil tentar novamente
@@ -158,7 +167,8 @@ class SendWhatsAppMessage implements ShouldQueue
 
         } catch (\Exception $e) {
             $this->message->update([
-                'delivery_status' => 'failed'
+                'delivery_status' => 'failed',
+                'error_message' => $e->getMessage()
             ]);
 
             Log::error('Exceção ao enviar mensagem', [
@@ -169,6 +179,97 @@ class SendWhatsAppMessage implements ShouldQueue
             ]);
 
             throw $e;
+        }
+    }
+
+    /**
+     * Prepare message payload based on message type
+     */
+    private function prepareMessagePayload(): array
+    {
+        $baseUrl = url('/');
+
+        switch ($this->message->type) {
+            case 'text':
+                return [
+                    'Conversation' => $this->message->content
+                ];
+
+            case 'image':
+                return [
+                    'ImageMessage' => [
+                        'Caption' => $this->message->content, // optional caption
+                        'Mimetype' => $this->message->file_mime_type,
+                        'URL' => $baseUrl . Storage::url($this->message->file_path)
+                    ]
+                ];
+
+            case 'video':
+                return [
+                    'VideoMessage' => [
+                        'Caption' => $this->message->content, // optional caption
+                        'Mimetype' => $this->message->file_mime_type,
+                        'URL' => $baseUrl . Storage::url($this->message->file_path)
+                    ]
+                ];
+
+            case 'audio':
+                return [
+                    'AudioMessage' => [
+                        'Mimetype' => $this->message->file_mime_type,
+                        'URL' => $baseUrl . Storage::url($this->message->file_path),
+                        'PTT' => $this->message->media_metadata['voice_note'] ?? false
+                    ]
+                ];
+
+            case 'document':
+                return [
+                    'DocumentMessage' => [
+                        'Title' => $this->message->media_metadata['title'] ?? null,
+                        'FileName' => $this->message->file_name,
+                        'Mimetype' => $this->message->file_mime_type,
+                        'URL' => $baseUrl . Storage::url($this->message->file_path)
+                    ]
+                ];
+
+            default:
+                // Fallback to text message
+                return [
+                    'Conversation' => $this->message->content ?: 'Mensagem não suportada'
+                ];
+        }
+    }
+
+    /**
+     * Extract specific error message from WhatsApp API response
+     */
+    private function extractErrorMessage(\Illuminate\Http\Client\Response $response): string
+    {
+        try {
+            $body = $response->body();
+            $data = $response->json();
+
+            // Para respostas JSON com campo "message"
+            if (isset($data['message'])) {
+                return $data['message'];
+            }
+
+            // Para respostas JSON com campo "error"
+            if (isset($data['error'])) {
+                return is_array($data['error']) ? json_encode($data['error']) : $data['error'];
+            }
+
+            // Para outros formatos JSON
+            if (is_array($data) && !empty($data)) {
+                return json_encode($data);
+            }
+
+            // Fallback para o corpo da resposta
+            return $body ?: 'Erro desconhecido no envio da mensagem';
+
+        } catch (\Exception $e) {
+            // Se não conseguir fazer parse, retorna o corpo bruto
+            return $response->body() ?: 'Erro desconhecido no envio da mensagem';
         }
     }
 }

@@ -46,24 +46,29 @@ class MessageController extends Controller
             abort(403);
         }
 
-        $validated = $request->validate([
-            'content' => 'required|string|max:4096',
+        // Validar entrada - pode ser texto ou arquivo
+        $request->validate([
+            'content' => 'required_without:file|string|max:4096',
+            'file' => 'required_without:content|file|max:15360|mimes:jpg,jpeg,png,gif,mp4,mp3,wav,pdf,doc,docx,txt,zip',
         ]);
+
+        $validated = $request->validated();
 
         try {
             DB::beginTransaction();
 
+            // Determinar tipo de mensagem e processar conteúdo
+            $messageData = $this->processMessageContent($validated, $conversation, $user);
+
             // Criar mensagem no banco
-            $message = Message::create([
+            $message = Message::create(array_merge([
                 'conversation_id' => $conversation->id,
                 'user_id' => $user->id,
                 'department_id' => $conversation->department_id,
                 'direction' => 'outbound',
-                'type' => 'text',
-                'content' => $validated['content'],
                 'sent_at' => now(),
                 'delivery_status' => 'pending',
-            ]);
+            ], $messageData));
 
             // Atualizar conversa
             $conversation->update([
@@ -159,5 +164,142 @@ class MessageController extends Controller
                 'message' => 'Não foi possível reenviar a mensagem. Tente novamente.'
             ], 500);
         }
+    }
+
+    /**
+     * Process message content - can be text or file
+     */
+    private function processMessageContent(array $validated, $conversation, $user): array
+    {
+        if (isset($validated['content'])) {
+            // Mensagem de texto
+            return [
+                'type' => 'text',
+                'content' => $validated['content'],
+            ];
+        }
+
+        if (isset($validated['file'])) {
+            $file = $validated['file'];
+
+            // Determinar tipo baseado no MIME type
+            $mimeType = $file->getMimeType();
+            $type = $this->determineMessageType($mimeType);
+
+            // Gerar nome único para o arquivo
+            $fileName = $file->getClientOriginalName();
+            $extension = $file->getClientOriginalExtension();
+            $uniqueName = time() . '_' . uniqid() . '.' . $extension;
+
+            // Caminho relativo: whatsapp/{company_id}/{conversation_id}/
+            $relativePath = "whatsapp/{$conversation->company_id}/{$conversation->id}/{$uniqueName}";
+
+            // Salvar arquivo
+            $file->storeAs("public/whatsapp/{$conversation->company_id}/{$conversation->id}", $uniqueName);
+
+            // Metadados específicos do tipo
+            $mediaMetadata = $this->extractMediaMetadata($file, $type);
+
+            return [
+                'type' => $type,
+                'content' => $validated['content'] ?? null, // caption opcional
+                'file_path' => $relativePath,
+                'file_name' => $fileName,
+                'file_mime_type' => $mimeType,
+                'file_size' => $file->getSize(),
+                'media_metadata' => $mediaMetadata,
+            ];
+        }
+
+        throw new \InvalidArgumentException('Conteúdo da mensagem inválido');
+    }
+
+    /**
+     * Determine message type based on MIME type
+     */
+    private function determineMessageType(string $mimeType): string
+    {
+        if (str_starts_with($mimeType, 'image/')) {
+            return 'image';
+        }
+
+        if (str_starts_with($mimeType, 'video/')) {
+            return 'video';
+        }
+
+        if (str_starts_with($mimeType, 'audio/')) {
+            return 'audio';
+        }
+
+        // Document types
+        $documentTypes = [
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'text/plain',
+            'application/zip',
+            'application/x-zip-compressed',
+        ];
+
+        if (in_array($mimeType, $documentTypes)) {
+            return 'document';
+        }
+
+        // Default to document for unknown types
+        return 'document';
+    }
+
+    /**
+     * Extract media-specific metadata
+     */
+    private function extractMediaMetadata($file, string $type): array
+    {
+        $metadata = [];
+
+        try {
+            switch ($type) {
+                case 'image':
+                    $imageInfo = getimagesize($file->getRealPath());
+                    if ($imageInfo) {
+                        $metadata = [
+                            'width' => $imageInfo[0],
+                            'height' => $imageInfo[1],
+                        ];
+                    }
+                    break;
+
+                case 'video':
+                    // Basic video metadata - could be extended with FFmpeg
+                    $metadata = [
+                        'duration' => null, // Would need FFmpeg or similar
+                    ];
+                    break;
+
+                case 'audio':
+                    // Basic audio metadata
+                    $metadata = [
+                        'duration' => null, // Would need audio processing library
+                        'voice_note' => false, // Default assumption
+                    ];
+                    break;
+
+                case 'document':
+                    // Document metadata
+                    $metadata = [
+                        'page_count' => null, // Would need PDF processing library
+                        'title' => pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME),
+                    ];
+                    break;
+            }
+        } catch (\Exception $e) {
+            // Ignore metadata extraction errors
+            Log::warning('Failed to extract media metadata', [
+                'error' => $e->getMessage(),
+                'type' => $type,
+                'file' => $file->getClientOriginalName(),
+            ]);
+        }
+
+        return $metadata;
     }
 }

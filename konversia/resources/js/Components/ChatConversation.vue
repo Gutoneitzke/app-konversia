@@ -29,10 +29,12 @@ const props = defineProps({
 /* =======================
    STATE
 ======================= */
-const form = useForm({ content: '' })
+const form = useForm({ content: '', file: null })
 const sending = ref(false)
 const loadingMessages = ref(true)
 const hasUnreadMessages = ref(false)
+const selectedFile = ref(null)
+const filePreview = ref(null)
 
 const messagesContainer = ref(null)
 const showTransferModal = ref(false)
@@ -199,14 +201,26 @@ onUnmounted(() => {
    ACTIONS
 ======================= */
 const sendMessage = () => {
-    if (!form.content.trim()) return
+    if (!form.content.trim() && !selectedFile.value) return
 
     sending.value = true
 
+    const formData = new FormData()
+
+    if (form.content.trim()) {
+        formData.append('content', form.content)
+    }
+
+    if (selectedFile.value) {
+        formData.append('file', selectedFile.value)
+    }
+
     form.post(route('conversations.messages.store', props.conversation.id), {
+        data: formData,
         preserveScroll: true,
         onSuccess: () => {
             form.reset()
+            clearSelectedFile()
             scrollToBottom()
         },
         onError: (errors) => {
@@ -217,6 +231,80 @@ const sendMessage = () => {
             sending.value = false
         }
     })
+}
+
+const handleFileSelect = (event) => {
+    const file = event.target.files[0]
+    if (file) {
+        selectedFile.value = file
+        createFilePreview(file)
+    }
+}
+
+const createFilePreview = (file) => {
+    if (file.type.startsWith('image/')) {
+        const reader = new FileReader()
+        reader.onload = (e) => {
+            filePreview.value = {
+                type: 'image',
+                url: e.target.result,
+                name: file.name,
+                size: formatFileSize(file.size)
+            }
+        }
+        reader.readAsDataURL(file)
+    } else {
+        filePreview.value = {
+            type: 'file',
+            name: file.name,
+            size: formatFileSize(file.size),
+            icon: getFileIcon(file.type)
+        }
+    }
+}
+
+const clearSelectedFile = () => {
+    selectedFile.value = null
+    filePreview.value = null
+    // Limpar o input file
+    const fileInput = document.querySelector('input[type="file"]')
+    if (fileInput) fileInput.value = ''
+}
+
+const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes'
+    const k = 1024
+    const sizes = ['Bytes', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+const getFileIcon = (mimeType) => {
+    if (mimeType.startsWith('video/')) return '🎥'
+    if (mimeType.startsWith('audio/')) return '🎵'
+    if (mimeType.includes('pdf')) return '📄'
+    if (mimeType.includes('word') || mimeType.includes('document')) return '📝'
+    if (mimeType.includes('zip') || mimeType.includes('rar')) return '📦'
+    return '📎'
+}
+
+const getMediaUrl = (message) => {
+    // Todas as mensagens agora usam URL local (armazenamento interno)
+    const url = message.file_url
+    console.log('getMediaUrl for message', message.id, message.type, ':', url)
+    return url
+}
+
+const handleImageError = (event) => {
+    console.error('Erro ao carregar imagem:', event.target.src, event)
+    console.error('Message object:', event.target.closest('[data-message-id]')?.dataset?.messageId)
+}
+
+const openMediaModal = (message) => {
+    if (message.type === 'image' || message.type === 'sticker') {
+        // Por enquanto, abrir em nova aba. Pode implementar modal depois
+        window.open(getMediaUrl(message), '_blank')
+    }
 }
 
 const openTransferModal = () => {
@@ -561,8 +649,61 @@ const reopenConversation = () => {
                                 }"
                                 class="rounded-2xl px-4 py-3"
                             >
-                                <div class="text-sm leading-relaxed">
+                                <!-- Conteúdo de texto (se houver) -->
+                                <div v-if="message.content && message.type !== 'sticker'" class="text-sm leading-relaxed mb-2">
                                     {{ message.content }}
+                                </div>
+
+                                <!-- Mídia -->
+                                <div v-if="message.type === 'image' || message.type === 'sticker'" class="mb-2">
+                                    <img
+                                        :src="getMediaUrl(message)"
+                                        class="max-w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                                        @click="openMediaModal(message)"
+                                        style="max-height: 300px;"
+                                        :class="{ 'max-w-xs': message.type === 'sticker' }"
+                                    />
+                                </div>
+
+                                <div v-else-if="message.type === 'video'" class="mb-2">
+                                    <video
+                                        controls
+                                        class="max-w-full h-auto rounded-lg"
+                                        style="max-height: 300px;"
+                                    >
+                                        <source :src="getMediaUrl(message)" :type="message.file_mime_type">
+                                        Seu navegador não suporta o elemento de vídeo.
+                                    </video>
+                                </div>
+
+                                <div v-else-if="message.type === 'audio'" class="mb-2">
+                                    <audio controls class="w-full">
+                                        <source :src="getMediaUrl(message)" :type="message.file_mime_type">
+                                        Seu navegador não suporta o elemento de áudio.
+                                    </audio>
+                                </div>
+
+                                <div v-else-if="message.type === 'document'" class="mb-2">
+                                    <a
+                                        :href="getMediaUrl(message)"
+                                        target="_blank"
+                                        class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                    >
+                                        <div class="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded flex items-center justify-center">
+                                            📄
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                                {{ message.file_name }}
+                                            </p>
+                                            <p class="text-xs text-gray-500 dark:text-gray-400">
+                                                {{ formatFileSize(message.file_size) }}
+                                            </p>
+                                        </div>
+                                        <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                                        </svg>
+                                    </a>
                                 </div>
                                 <div class="flex items-center justify-between mt-2">
                                     <div
@@ -626,31 +767,79 @@ const reopenConversation = () => {
             </div>
 
             <!-- Campo de envio ativo -->
-            <div v-else class="flex items-center gap-3">
-                <div class="flex-1">
+            <div v-else class="space-y-3">
+                <!-- Preview do arquivo selecionado -->
+                <div v-if="filePreview" class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <div v-if="filePreview.type === 'image'" class="flex items-center gap-3">
+                        <img :src="filePreview.url" class="w-12 h-12 object-cover rounded" />
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-medium text-gray-900 truncate">{{ filePreview.name }}</p>
+                            <p class="text-xs text-gray-500">{{ filePreview.size }}</p>
+                        </div>
+                    </div>
+                    <div v-else class="flex items-center gap-3">
+                        <div class="w-12 h-12 bg-gray-200 rounded flex items-center justify-center text-xl">
+                            {{ filePreview.icon }}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-medium text-gray-900 truncate">{{ filePreview.name }}</p>
+                            <p class="text-xs text-gray-500">{{ filePreview.size }}</p>
+                        </div>
+                    </div>
+                    <button
+                        @click="clearSelectedFile"
+                        class="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                        :disabled="sending"
+                    >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Input de arquivo e texto -->
+                <div class="flex items-center gap-3">
+                    <!-- Botão de arquivo -->
+                    <label class="relative cursor-pointer">
+                        <input
+                            type="file"
+                            @change="handleFileSelect"
+                            accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.zip"
+                            class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            :disabled="sending"
+                        />
+                        <div class="inline-flex items-center justify-center h-12 w-12 bg-gray-100 hover:bg-gray-200 disabled:bg-gray-300 text-gray-600 disabled:text-gray-400 rounded-full transition-colors duration-200 disabled:cursor-not-allowed"
+                             :class="{ 'hover:bg-gray-300': !sending }">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
+                            </svg>
+                        </div>
+                    </label>
+
                     <input
                         v-model="form.content"
                         @keyup.enter="sendMessage"
                         type="text"
                         placeholder="Digite sua mensagem..."
-                        class="w-full rounded-full border-gray-300 bg-gray-50 px-4 py-3 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 transition-all duration-200"
+                        class="flex-1 rounded-full border-gray-300 bg-gray-50 px-4 py-3 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 transition-all duration-200"
                         :disabled="sending"
                     />
+
+                    <button
+                        @click="sendMessage"
+                        :disabled="sending || (!form.content.trim() && !selectedFile)"
+                        class="inline-flex items-center justify-center h-12 w-12 bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-300 text-white rounded-full transition-colors duration-200 disabled:cursor-not-allowed"
+                    >
+                        <svg v-if="sending" class="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <svg v-else class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                        </svg>
+                    </button>
                 </div>
-                <button
-                    @click="sendMessage"
-                    :disabled="sending || !form.content.trim()"
-                    class="inline-flex items-center justify-center h-12 w-12 bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-300 text-white rounded-full transition-colors duration-200 disabled:cursor-not-allowed"
-                >
-                    <svg v-if="sending" class="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <svg v-else class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
-                    </svg>
-                </button>
-            </div>
+                </div>
         </div>
         <!-- Modal de Transferência -->
         <TransferConversationModal

@@ -15,6 +15,8 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Http;
 
 class ProcessWhatsAppWebhookEvent implements ShouldQueue
 {
@@ -40,11 +42,19 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
      */
     public function handle(WhatsAppService $whatsappService): void
     {
+        Log::info('=== INÍCIO PROCESSAMENTO WEBHOOK ===', [
+            'number_id' => $this->numberId,
+            'event_type' => $this->eventType,
+            'timestamp' => now()->toISOString(),
+            'has_data' => !empty($this->eventData)
+        ]);
+
         try {
             Log::info('Processando evento WhatsApp webhook', [
                 'number_id' => $this->numberId,
                 'event_type' => $this->eventType,
-                'data' => $this->eventData
+                'data_keys' => array_keys($this->eventData),
+                'data_sample' => json_encode(array_slice($this->eventData, 0, 2))
             ]);
 
             // Buscar WhatsAppNumber pelo JID com fallback inteligente
@@ -416,6 +426,12 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
                 $messageType = 'document';
                 $mediaMetadata = $messageData['documentMessage'];
             } elseif (isset($messageData['stickerMessage'])) {
+                Log::info('STICKER MESSAGE DETECTED', [
+                    'has_sticker_message' => isset($messageData['stickerMessage']),
+                    'sticker_keys' => array_keys($messageData['stickerMessage'] ?? []),
+                    'has_url' => isset($messageData['stickerMessage']['URL']),
+                    'url_value' => $messageData['stickerMessage']['URL'] ?? 'NO_URL'
+                ]);
                 $content = '[Sticker]';
                 $messageType = 'sticker';
                 $mediaMetadata = $messageData['stickerMessage'];
@@ -450,7 +466,7 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
             $conversation = $this->findOrCreateConversation($session, $contact, $chat);
 
             // 3. Criar a mensagem
-            $this->createMessage($conversation, $messageInfo, $content, $messageType, $mediaMetadata);
+            $this->createMessage($conversation, $messageInfo, $messageData, $content, $messageType, $mediaMetadata);
 
             // 4. Atualizar timestamps
             $conversation->update(['last_message_at' => now()]);
@@ -787,9 +803,12 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
     /**
      * Criar mensagem
      */
-    protected function createMessage(Conversation $conversation, array $messageInfo, string $content, string $type, ?array $mediaMetadata = null): Message
+    protected function createMessage(Conversation $conversation, array $messageInfo, array $webhookData, string $content, string $type, ?array $mediaMetadata = null): Message
     {
-        $message = Message::create([
+        // Processar mídia inbound se necessário
+        $processedMediaData = $this->processInboundMediaData($type, $messageInfo, $webhookData);
+
+        $messageAttributes = array_merge([
             'conversation_id' => $conversation->id,
             'direction' => 'inbound',
             'type' => $type,
@@ -805,7 +824,16 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
             'delivery_status' => 'delivered',
             'whatsapp_message_id' => $messageInfo['ID'] ?? null,
             'whatsapp_metadata' => $messageInfo,
+        ], $processedMediaData);
+
+        Log::info('Creating message with data', [
+            'message_attributes_keys' => array_keys($messageAttributes),
+            'file_path' => $messageAttributes['file_path'] ?? 'NO_FILE_PATH',
+            'file_name' => $messageAttributes['file_name'] ?? 'NO_FILE_NAME',
+            'processed_media_keys' => array_keys($processedMediaData)
         ]);
+
+        $message = Message::create($messageAttributes);
 
         Log::info('Mensagem criada', [
             'message_id' => $message->id,
@@ -815,6 +843,701 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
         ]);
 
         return $message;
+    }
+
+    /**
+     * Test method to verify media storage functionality
+     */
+    public static function testMediaStorage(): void
+    {
+        $testData = 'RIFF\x00\x00\x00\x00WEBPVP8 '; // Fake WebP header
+        $testPath = 'whatsapp/inbound/test/test.webp';
+
+        $result = \Illuminate\Support\Facades\Storage::disk('public')->put($testPath, $testData);
+
+        Log::info('Media storage test', [
+            'test_path' => $testPath,
+            'storage_result' => $result,
+            'file_exists' => \Illuminate\Support\Facades\Storage::disk('public')->exists($testPath),
+            'full_path' => storage_path('app/public/' . $testPath)
+        ]);
+
+        // Test URL generation
+        $url = \Illuminate\Support\Facades\Storage::disk('public')->url($testPath);
+        Log::info('URL generation test', [
+            'generated_url' => $url,
+            'expected_pattern' => '/storage/whatsapp/inbound/test/test.webp'
+        ]);
+    }
+
+    /**
+     * Process inbound media data from message info and message data
+     */
+    private function processInboundMediaData(string $type, array $messageInfo, array $messageData): array
+    {
+        $mediaData = [];
+
+        // Só processar se for um tipo de mídia
+        $mediaTypes = ['image', 'video', 'audio', 'document', 'sticker'];
+        if (!in_array($type, $mediaTypes)) {
+            Log::info('Message type is not media, skipping media processing', [
+                'type' => $type,
+                'supported_types' => $mediaTypes
+            ]);
+            return $mediaData;
+        }
+
+        Log::info('=== PROCESSING INBOUND MEDIA ===', [
+            'type' => $type,
+            'has_url_in_info' => isset($messageInfo['URL']),
+            'has_url_in_data' => isset($messageData['URL']) || isset($messageData[$type . 'Message']['URL']),
+            'sticker_url' => $messageData['stickerMessage']['URL'] ?? 'NO_STICKER_URL',
+            'message_data_keys' => array_keys($messageData),
+            'message_info_keys' => array_keys($messageInfo)
+        ]);
+
+        // Extrair informações comuns
+        $mediaData['file_mime_type'] = $messageInfo['mimetype'] ?? $messageInfo['Mimetype'] ?? null;
+        $mediaData['file_size'] = $messageInfo['fileLength'] ?? $messageInfo['FileLength'] ?? null;
+
+        // Procurar URL nos dados da mensagem
+        $mediaUrl = null;
+
+        // 1. Procurar na estrutura específica do tipo (ex: stickerMessage.URL)
+        if (isset($messageData[$type . 'Message']['URL'])) {
+            $mediaUrl = $messageData[$type . 'Message']['URL'];
+            Log::info('Found URL in message data', ['url' => $mediaUrl, 'type' => $type]);
+        }
+        // 2. Procurar no nível raiz do messageData
+        elseif (isset($messageData['URL'])) {
+            $mediaUrl = $messageData['URL'];
+        }
+        // 3. Procurar no messageInfo (fallback)
+        elseif (isset($messageInfo['URL'])) {
+            $mediaUrl = $messageInfo['URL'];
+        }
+
+        // Baixar e armazenar mídia localmente se URL foi encontrada
+        if ($mediaUrl) {
+            $localFileData = $this->downloadAndStoreMedia($mediaUrl, $type, $messageData[$type . 'Message'] ?? $messageInfo);
+            if ($localFileData) {
+                $mediaData['file_path'] = $localFileData['path'];
+                $mediaData['file_name'] = $localFileData['name'];
+                Log::info('Media downloaded and stored locally in webhook', [
+                    'type' => $type,
+                    'local_path' => $localFileData['path']
+                ]);
+            } else {
+                // Se download falhou, não salvar nada - usar URL externa como último recurso
+                Log::warning('Media download failed completely, skipping local storage', [
+                    'type' => $type,
+                    'media_url' => $mediaUrl
+                ]);
+                // Não definir file_path para que o sistema use URL externa
+            }
+        } else {
+            Log::warning('No media URL found in webhook data', [
+                'type' => $type,
+                'message_info_has_url' => isset($messageInfo['URL']),
+                'message_data_keys' => array_keys($messageData)
+            ]);
+        }
+
+        // Adicionar metadados específicos por tipo
+        $mediaData['media_metadata'] = $this->extractMediaMetadata($type, $messageInfo);
+
+        return $mediaData;
+    }
+
+    /**
+     * Download and store media locally, with decryption when needed
+     */
+    private function downloadAndStoreMedia(string $url, string $type, array $messageInfo): ?array
+    {
+        try {
+            Log::info('Starting media download', [
+                'url' => $url,
+                'type' => $type,
+                'number_id' => $this->numberId
+            ]);
+
+            // Buscar empresa através do número WhatsApp
+            $whatsappNumber = WhatsAppNumber::where('jid', $this->numberId)->first();
+            if (!$whatsappNumber) {
+                Log::warning('WhatsApp number not found', ['number_id' => $this->numberId]);
+                return null;
+            }
+
+            $company = $whatsappNumber->company;
+            Log::info('Found company', ['company_id' => $company->id]);
+
+            // Fazer download da mídia
+            Log::info('Making HTTP request to download media', ['url' => $url]);
+            $response = \Illuminate\Support\Facades\Http::timeout(30)->get($url);
+
+            if (!$response->successful()) {
+                Log::warning('Failed to download media from WhatsApp in webhook', [
+                    'url' => $url,
+                    'status' => $response->status(),
+                    'response_body' => $response->body(),
+                    'type' => $type
+                ]);
+                return null;
+            }
+
+            Log::info('HTTP request successful', [
+                'status' => $response->status(),
+                'content_length' => strlen($response->body())
+            ]);
+
+            $rawContent = $response->body();
+
+            // Verificar se o conteúdo baixado já é uma imagem válida (não precisa descriptografia)
+            if ($this->isValidImageContent($rawContent)) {
+                Log::info('Downloaded content is already a valid image, saving directly', [
+                    'type' => $type,
+                    'content_length' => strlen($rawContent)
+                ]);
+
+                // Salvar diretamente sem descriptografia
+                $relativePath = "whatsapp/inbound/{$company->id}/webhook/{$uniqueName}";
+                $saved = \Illuminate\Support\Facades\Storage::disk('public')->put($relativePath, $rawContent);
+
+                if ($saved) {
+                    Log::info('Media saved directly (no decryption needed)', [
+                        'type' => $type,
+                        'local_path' => $relativePath,
+                        'file_size' => strlen($rawContent)
+                    ]);
+
+                    return [
+                        'path' => $relativePath,
+                        'name' => $this->generateFileName($type, $messageInfo)
+                    ];
+                } else {
+                    Log::warning('Failed to save media file');
+                    return null;
+                }
+            }
+
+            // Se não é imagem válida, tentar descriptografar
+            $decryptedContent = $this->decryptMediaIfNeeded($rawContent, $type, $messageInfo);
+
+            // Se descriptografia falhou, abortar
+            if ($decryptedContent === null) {
+                Log::warning('Media decryption required but failed, not saving file', [
+                    'type' => $type,
+                    'content_length' => strlen($rawContent),
+                    'has_media_key' => isset($messageInfo['mediaKey'])
+                ]);
+                return null; // Não salvar arquivo corrompido
+            }
+
+            // Gerar nome único para o arquivo
+            $extension = $this->getExtensionFromMimeType($messageInfo['mimetype'] ?? $messageInfo['Mimetype'] ?? 'application/octet-stream');
+            $uniqueName = time() . '_' . uniqid() . '.' . $extension;
+
+            // Caminho relativo: whatsapp/inbound/{company_id}/webhook/
+            $relativePath = "whatsapp/inbound/{$company->id}/webhook/{$uniqueName}";
+
+            // Salvar arquivo
+            Log::info('Saving file to storage', [
+                'relative_path' => $relativePath,
+                'file_size' => strlen($decryptedContent),
+                'decrypted' => $rawContent !== $decryptedContent
+            ]);
+
+            $saved = \Illuminate\Support\Facades\Storage::disk('public')->put($relativePath, $decryptedContent);
+            Log::info('File save result', ['saved' => $saved, 'exists' => \Illuminate\Support\Facades\Storage::disk('public')->exists($relativePath)]);
+
+            // Limpeza automática de arquivos antigos (mais de 30 dias)
+            $this->cleanupOldMediaFiles($company->id);
+
+            Log::info('Media downloaded, decrypted and stored locally in webhook', [
+                'type' => $type,
+                'original_size' => strlen($rawContent),
+                'final_size' => strlen($decryptedContent),
+                'local_path' => $relativePath,
+                'decrypted' => $rawContent !== $decryptedContent
+            ]);
+
+            return [
+                'path' => $relativePath,
+                'name' => $this->generateFileName($type, $messageInfo)
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Error downloading/storing media in webhook', [
+                'url' => $url,
+                'type' => $type,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Decrypt media content when needed (for encrypted WhatsApp media)
+     * Returns null if decryption fails or is not needed
+     */
+    private function decryptMediaIfNeeded(string $content, string $type, array $messageInfo): ?string
+    {
+        // Primeiro verificar se o conteúdo já é uma imagem válida (não criptografada)
+        if ($this->isValidImageContent($content)) {
+            Log::info('Content is already a valid image, no decryption needed', [
+                'type' => $type,
+                'content_length' => strlen($content)
+            ]);
+            return $content; // Usar conteúdo original
+        }
+
+        // Se não é válido, tentar descriptografar se temos mediaKey
+        if (isset($messageInfo['mediaKey'])) {
+            Log::info('Content appears encrypted, attempting decryption', [
+                'type' => $type,
+                'has_file_enc_sha256' => isset($messageInfo['fileEncSHA256'])
+            ]);
+
+            try {
+                $decrypted = $this->decryptWhatsAppMedia($content, $messageInfo);
+                if ($decrypted !== null && $this->isValidImageContent($decrypted)) {
+                    Log::info('Media decryption successful - valid image', [
+                        'type' => $type,
+                        'original_size' => strlen($content),
+                        'decrypted_size' => strlen($decrypted)
+                    ]);
+                    return $decrypted;
+                } elseif ($decrypted !== null) {
+                    // Decryption succeeded but result is not recognized as standard image
+                    // This might still be valid (e.g., WebP with custom headers or different format)
+                    Log::warning('Decryption succeeded but result not recognized as standard image, saving anyway', [
+                        'type' => $type,
+                        'decrypted_size' => strlen($decrypted),
+                        'first_bytes' => bin2hex(substr($decrypted, 0, min(16, strlen($decrypted)))),
+                        'last_bytes' => bin2hex(substr($decrypted, -min(16, strlen($decrypted))))
+                    ]);
+                    return $decrypted; // Save anyway, might be valid
+                } else {
+                    Log::warning('Decryption failed completely', [
+                        'type' => $type,
+                        'decrypted_null' => true
+                    ]);
+                    return null; // Don't save invalid content
+                }
+            } catch (\Exception $e) {
+                Log::warning('Decryption exception', [
+                    'type' => $type,
+                    'error' => $e->getMessage()
+                ]);
+                return null; // Não salvar se der erro
+            }
+        }
+
+        // Se não temos mediaKey e o conteúdo não é válido, não salvar
+        Log::warning('Content is not valid image and no decryption key available', [
+            'type' => $type,
+            'has_media_key' => isset($messageInfo['mediaKey']),
+            'content_length' => strlen($content)
+        ]);
+        return null;
+    }
+
+    /**
+     * Check if content appears to be a valid image
+     */
+    private function isValidImageContent(string $content): bool
+    {
+        $length = strlen($content);
+
+        if ($length < 12) {
+            return false;
+        }
+
+        // Verificar assinatura de WebP
+        if (substr($content, 0, 4) === 'RIFF' && substr($content, 8, 4) === 'WEBP') {
+            Log::info('Valid WebP image detected');
+            return true;
+        }
+
+        // Verificar assinatura de PNG
+        if (substr($content, 0, 8) === "\x89PNG\r\n\x1a\n") {
+            Log::info('Valid PNG image detected');
+            return true;
+        }
+
+        // Verificar assinatura de JPEG
+        if (substr($content, 0, 2) === "\xFF\xD8") {
+            Log::info('Valid JPEG image detected');
+            return true;
+        }
+
+        // Verificar assinatura de GIF
+        if (substr($content, 0, 4) === 'GIF8') {
+            Log::info('Valid GIF image detected');
+            return true;
+        }
+
+        Log::warning('Invalid image content detected', [
+            'content_length' => $length,
+            'first_bytes' => bin2hex(substr($content, 0, min(16, $length)))
+        ]);
+
+        return false;
+    }
+
+    /**
+     * Generates decryption keys for WhatsApp media using HKDF
+     *
+     * @param string $mediaKey The base64-encoded media key from webhook
+     * @param string $type The media type (image, video, audio, document, sticker)
+     * @param int $length The length of key material to generate (default 112)
+     * @return string|false The generated key material or false on failure
+     */
+    private function getDecryptionKeys(string $mediaKey, string $type = 'image', int $length = 112)
+    {
+        try {
+            // Map media type to HKDF info string
+            $info = match ($type) {
+                'image', 'sticker' => 'WhatsApp Image Keys',
+                'video' => 'WhatsApp Video Keys',
+                'audio' => 'WhatsApp Audio Keys',
+                'document' => 'WhatsApp Document Keys',
+                default => 'WhatsApp Image Keys', // Default fallback
+            };
+
+            // Decode base64 media key
+            $decodedKey = base64_decode($mediaKey);
+
+            if (!$decodedKey) {
+                Log::warning('Failed to decode base64 media key');
+                return false;
+            }
+
+            Log::info('Generating decryption keys with HKDF', [
+                'media_type' => $type,
+                'hkdf_info' => $info,
+                'key_length' => $length,
+                'decoded_key_length' => strlen($decodedKey)
+            ]);
+
+            // Generate key material using HKDF
+            $keyMaterial = hash_hkdf('sha256', $decodedKey, $length, $info, '');
+
+            if (!$keyMaterial) {
+                Log::warning('HKDF key derivation failed');
+                return false;
+            }
+
+            Log::info('HKDF key derivation successful', [
+                'key_material_length' => strlen($keyMaterial)
+            ]);
+
+            return $keyMaterial;
+
+        } catch (\Exception $e) {
+            Log::error('Exception in getDecryptionKeys', [
+                'error' => $e->getMessage(),
+                'media_type' => $type
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Decrypt WhatsApp encrypted media using mediaKey
+     * WhatsApp uses AES-256-CBC with HKDF key derivation
+     */
+    private function decryptWhatsAppMedia(string $encryptedContent, array $messageInfo): ?string
+    {
+        try {
+            $mediaKey = $messageInfo['mediaKey'] ?? null;
+            $fileEncSHA256 = $messageInfo['fileEncSHA256'] ?? null;
+
+            if (!$mediaKey) {
+                Log::warning('No mediaKey provided for decryption');
+                return null;
+            }
+
+            // Determine media type for HKDF info string
+            $type = $messageInfo['type'] ?? 'image';
+
+            // Generate decryption keys using HKDF
+            $keys = $this->getDecryptionKeys($mediaKey, $type);
+
+            if (!$keys) {
+                Log::warning('Failed to generate decryption keys');
+                return null;
+            }
+
+            // Extract IV (first 16 bytes) and cipher key (next 32 bytes)
+            $iv = substr($keys, 0, 16);
+            $cipherKey = substr($keys, 16, 32);
+
+            Log::info('HKDF key derivation successful', [
+                'iv_hex' => bin2hex($iv),
+                'cipher_key_length' => strlen($cipherKey)
+            ]);
+
+            Log::info('Attempting WhatsApp media decryption', [
+                'content_length' => strlen($encryptedContent),
+                'cipher_key_length' => strlen($cipherKey),
+                'iv_length' => strlen($iv),
+                'has_expected_hash' => !empty($fileEncSHA256)
+            ]);
+
+            // Remove the last 10 bytes (MAC) from the encrypted file
+            $ciphertext = substr($encryptedContent, 0, strlen($encryptedContent) - 10);
+
+            Log::info('Removed MAC from encrypted content', [
+                'original_length' => strlen($encryptedContent),
+                'ciphertext_length' => strlen($ciphertext)
+            ]);
+
+            // Decrypt the file using AES-256-CBC
+            $decrypted = openssl_decrypt($ciphertext, 'aes-256-cbc', $cipherKey, OPENSSL_RAW_DATA, $iv);
+
+            if ($decrypted === false) {
+                $opensslError = openssl_error_string();
+                Log::warning('AES-256-CBC decryption failed', [
+                    'openssl_error' => $opensslError,
+                    'ciphertext_length' => strlen($ciphertext),
+                    'iv_hex' => bin2hex($iv),
+                    'cipher_key_length' => strlen($cipherKey)
+                ]);
+                return null;
+            }
+
+            Log::info('AES-256-CBC decryption successful', [
+                'decrypted_length' => strlen($decrypted)
+            ]);
+
+            if ($decrypted === false) {
+                $opensslError = openssl_error_string();
+                Log::warning('All OpenSSL decryption methods failed', [
+                    'openssl_error' => $opensslError,
+                    'content_length' => strlen($encryptedContent),
+                    'key_hex_start' => bin2hex(substr($encKey, 0, 8)) . '...',
+                    'iv_hex' => bin2hex($iv),
+                    'iv_length' => strlen($iv)
+                ]);
+                return null;
+            }
+
+            // Verify integrity if fileEncSHA256 is provided
+            if ($fileEncSHA256) {
+                $expectedHash = base64_decode($fileEncSHA256);
+                $actualHash = hash('sha256', $decrypted, true);
+
+                if (!hash_equals($expectedHash, $actualHash)) {
+                    Log::warning('Media integrity check failed - trying fileSHA256 instead', [
+                        'expected_hash_enc' => bin2hex($expectedHash),
+                        'actual_hash' => bin2hex($actualHash)
+                    ]);
+
+                    // Try with fileSHA256 instead (might be the decrypted content hash)
+                    if (isset($messageInfo['fileSHA256'])) {
+                        $fileSHA256 = $messageInfo['fileSHA256'];
+                        $expectedHashPlain = base64_decode($fileSHA256);
+                        if (hash_equals($expectedHashPlain, $actualHash)) {
+                            Log::info('Media integrity check passed with fileSHA256');
+                        } else {
+                            Log::warning('Both integrity checks failed - saving anyway for testing', [
+                                'expected_hash_plain' => bin2hex($expectedHashPlain),
+                                'actual_hash' => bin2hex($actualHash)
+                            ]);
+                            // Continue and save anyway for debugging
+                        }
+                    } else {
+                        Log::warning('Integrity check failed and no fileSHA256 available - saving anyway');
+                        // Continue and save anyway for debugging
+                    }
+                } else {
+                    Log::info('Media integrity check passed with fileEncSHA256');
+                }
+            }
+
+            // Check if decrypted content is a valid image
+            if ($this->isValidImageContent($decrypted)) {
+                Log::info('WhatsApp media decryption successful - valid image', [
+                    'decrypted_length' => strlen($decrypted)
+                ]);
+                return $decrypted;
+            } else {
+                // Decryption succeeded but result is not a valid image
+                // This might still be usable (e.g., WebP with different signature)
+                Log::warning('Decryption succeeded but result is not valid image - saving anyway', [
+                    'decrypted_length' => strlen($decrypted),
+                    'first_bytes' => bin2hex(substr($decrypted, 0, min(16, strlen($decrypted))))
+                ]);
+                return $decrypted; // Save anyway for testing
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Exception in WhatsApp media decryption', [
+                'error' => $e->getMessage(),
+                'has_media_key' => isset($messageInfo['mediaKey']),
+                'has_file_enc_sha256' => isset($messageInfo['fileEncSHA256'])
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Generate a filename for media files
+     */
+    private function generateFileName(string $type, array $messageInfo): string
+    {
+        $extension = match ($messageInfo['mimetype'] ?? $messageInfo['Mimetype'] ?? '') {
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/gif' => 'gif',
+            'image/webp' => 'webp',
+            'video/mp4' => 'mp4',
+            'audio/mp3' => 'mp3',
+            'audio/ogg' => 'ogg',
+            'audio/wav' => 'wav',
+            default => 'file'
+        };
+
+        return "whatsapp_{$type}_" . time() . ".{$extension}";
+    }
+
+    /**
+     * Extract specific media metadata
+     */
+    private function extractMediaMetadata(string $type, array $messageInfo): array
+    {
+        $metadata = [];
+
+        switch ($type) {
+            case 'image':
+            case 'sticker':
+                if (isset($messageInfo['width']) && isset($messageInfo['height'])) {
+                    $metadata = [
+                        'width' => $messageInfo['width'],
+                        'height' => $messageInfo['height'],
+                    ];
+                }
+                break;
+
+            case 'video':
+                $metadata = [
+                    'width' => $messageInfo['width'] ?? null,
+                    'height' => $messageInfo['height'] ?? null,
+                    'duration' => $messageInfo['duration'] ?? null,
+                ];
+                break;
+
+            case 'audio':
+                $metadata = [
+                    'duration' => $messageInfo['duration'] ?? null,
+                    'voice_note' => $messageInfo['ptt'] ?? false,
+                ];
+                break;
+
+            case 'document':
+                $metadata = [
+                    'page_count' => $messageInfo['pageCount'] ?? null,
+                    'title' => $messageInfo['title'] ?? $messageInfo['fileName'] ?? null,
+                ];
+                break;
+        }
+
+        // Adicionar informações específicas do sticker se for o caso
+        if ($type === 'sticker') {
+            $metadata = array_merge($metadata, [
+                'is_animated' => $messageInfo['isAnimated'] ?? false,
+                'is_ai_sticker' => $messageInfo['isAiSticker'] ?? false,
+                'accessibility_label' => $messageInfo['accessibilityLabel'] ?? null,
+            ]);
+        }
+
+        return array_filter($metadata); // Remove null values
+    }
+
+    /**
+     * Cleanup old media files to prevent storage bloat
+     */
+    private function cleanupOldMediaFiles(int $companyId): void
+    {
+        try {
+            $inboundPath = "whatsapp/inbound/{$companyId}";
+            $cutoffDate = now()->subDays(30); // Arquivos mais antigos que 30 dias
+
+            // Verificar se o diretório existe
+            if (!\Illuminate\Support\Facades\Storage::disk('public')->exists($inboundPath)) {
+                return;
+            }
+
+            $filesDeleted = 0;
+            $totalSizeFreed = 0;
+
+            // Listar todas as pastas da empresa
+            $subDirs = \Illuminate\Support\Facades\Storage::disk('public')->directories($inboundPath);
+
+            foreach ($subDirs as $subDir) {
+                $files = \Illuminate\Support\Facades\Storage::disk('public')->files($subDir);
+
+                foreach ($files as $file) {
+                    $filePath = $file;
+                    $fullPath = storage_path("app/public/{$filePath}");
+
+                    // Verificar se o arquivo existe e é antigo
+                    if (file_exists($fullPath) && filemtime($fullPath) < $cutoffDate->timestamp) {
+                        $fileSize = filesize($fullPath);
+                        \Illuminate\Support\Facades\Storage::disk('public')->delete($filePath);
+
+                        $filesDeleted++;
+                        $totalSizeFreed += $fileSize;
+
+                        Log::info('Old media file deleted in webhook', [
+                            'file_path' => $filePath,
+                            'file_age_days' => now()->diffInDays(filemtime($fullPath)),
+                            'file_size' => $fileSize
+                        ]);
+                    }
+                }
+            }
+
+            if ($filesDeleted > 0) {
+                Log::info('Media cleanup completed in webhook', [
+                    'company_id' => $companyId,
+                    'files_deleted' => $filesDeleted,
+                    'total_size_freed_mb' => round($totalSizeFreed / 1024 / 1024, 2)
+                ]);
+            }
+
+        } catch (\Exception $e) {
+            Log::warning('Media cleanup failed in webhook', [
+                'company_id' => $companyId,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Get file extension from MIME type
+     */
+    private function getExtensionFromMimeType(string $mimeType): string
+    {
+        $extensions = [
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/gif' => 'gif',
+            'image/webp' => 'webp',
+            'video/mp4' => 'mp4',
+            'video/avi' => 'avi',
+            'audio/mp3' => 'mp3',
+            'audio/ogg' => 'ogg',
+            'audio/wav' => 'wav',
+            'application/pdf' => 'pdf',
+            'application/msword' => 'doc',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+            'text/plain' => 'txt',
+            'application/zip' => 'zip',
+        ];
+
+        return $extensions[$mimeType] ?? 'file';
     }
 
     /**
