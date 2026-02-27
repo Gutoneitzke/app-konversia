@@ -418,11 +418,23 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
                 $messageType = 'video';
                 $mediaMetadata = $messageData['videoMessage'];
             } elseif (isset($messageData['audioMessage'])) {
-                $content = '[Áudio]';
+                Log::info('AUDIO MESSAGE DETECTED', [
+                    'has_audio_message' => isset($messageData['audioMessage']),
+                    'audio_keys' => array_keys($messageData['audioMessage'] ?? []),
+                    'has_url' => isset($messageData['audioMessage']['URL']),
+                    'url_value' => $messageData['audioMessage']['URL'] ?? 'NO_AUDIO_URL'
+                ]);
+                $content = '';
                 $messageType = 'audio';
                 $mediaMetadata = $messageData['audioMessage'];
             } elseif (isset($messageData['documentMessage'])) {
-                $content = $messageData['documentMessage']['fileName'] ?? '[Documento]';
+                Log::info('DOCUMENT MESSAGE DETECTED', [
+                    'has_document_message' => isset($messageData['documentMessage']),
+                    'document_keys' => array_keys($messageData['documentMessage'] ?? []),
+                    'has_url' => isset($messageData['documentMessage']['URL']),
+                    'url_value' => $messageData['documentMessage']['URL'] ?? 'NO_DOCUMENT_URL'
+                ]);
+                $content = $messageData['documentMessage']['fileName'] ?? '';
                 $messageType = 'document';
                 $mediaMetadata = $messageData['documentMessage'];
             } elseif (isset($messageData['stickerMessage'])) {
@@ -893,7 +905,9 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
             'has_url_in_data' => isset($messageData['URL']) || isset($messageData[$type . 'Message']['URL']),
             'sticker_url' => $messageData['stickerMessage']['URL'] ?? 'NO_STICKER_URL',
             'message_data_keys' => array_keys($messageData),
-            'message_info_keys' => array_keys($messageInfo)
+            'message_info_keys' => array_keys($messageInfo),
+            'full_message_data' => $messageData,
+            'full_message_info' => $messageInfo
         ]);
 
         // Extrair informações comuns
@@ -915,6 +929,15 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
         // 3. Procurar no messageInfo (fallback)
         elseif (isset($messageInfo['URL'])) {
             $mediaUrl = $messageInfo['URL'];
+            Log::info('Found URL in message info (fallback)', ['url' => $mediaUrl, 'type' => $type]);
+        }
+        else {
+            Log::warning('No URL found for media', [
+                'type' => $type,
+                'message_data_keys' => array_keys($messageData),
+                'message_info_keys' => array_keys($messageInfo),
+                'specific_message_keys' => isset($messageData[$type . 'Message']) ? array_keys($messageData[$type . 'Message']) : 'NO_SPECIFIC_MESSAGE'
+            ]);
         }
 
         // Baixar e armazenar mídia localmente se URL foi encontrada
@@ -1099,18 +1122,18 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
             ]);
 
             try {
-                $decrypted = $this->decryptWhatsAppMedia($content, $messageInfo);
-                if ($decrypted !== null && $this->isValidImageContent($decrypted)) {
-                    Log::info('Media decryption successful - valid image', [
+                $decrypted = $this->decryptWhatsAppMedia($content, $messageInfo, $type);
+                if ($decrypted !== null && $this->isValidMediaContent($decrypted, $type)) {
+                    Log::info('Media decryption successful - valid content', [
                         'type' => $type,
                         'original_size' => strlen($content),
                         'decrypted_size' => strlen($decrypted)
                     ]);
                     return $decrypted;
                 } elseif ($decrypted !== null) {
-                    // Decryption succeeded but result is not recognized as standard image
-                    // This might still be valid (e.g., WebP with custom headers or different format)
-                    Log::warning('Decryption succeeded but result not recognized as standard image, saving anyway', [
+                    // Decryption succeeded but result is not recognized as valid content
+                    // This might still be valid (different format or encoding)
+                    Log::warning('Decryption succeeded but result not recognized as valid content, saving anyway', [
                         'type' => $type,
                         'decrypted_size' => strlen($decrypted),
                         'first_bytes' => bin2hex(substr($decrypted, 0, min(16, strlen($decrypted)))),
@@ -1140,6 +1163,27 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
             'content_length' => strlen($content)
         ]);
         return null;
+    }
+
+    /**
+     * Check if content appears to be valid media based on type
+     */
+    private function isValidMediaContent(string $content, string $type): bool
+    {
+        switch ($type) {
+            case 'image':
+            case 'sticker':
+                return $this->isValidImageContent($content);
+            case 'audio':
+                return $this->isValidAudioContent($content);
+            case 'video':
+            case 'document':
+                // For videos and documents, we trust the decryption result
+                // since they have more complex signatures
+                return strlen($content) > 0;
+            default:
+                return strlen($content) > 0;
+        }
     }
 
     /**
@@ -1183,6 +1227,40 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
         ]);
 
         return false;
+    }
+
+    /**
+     * Check if content appears to be a valid audio file
+     */
+    private function isValidAudioContent(string $content): bool
+    {
+        $length = strlen($content);
+
+        if ($length < 12) {
+            return false;
+        }
+
+        // Check for OGG format (WhatsApp uses OGG/Opus for audio)
+        $firstBytes = substr($content, 0, 4);
+        if ($firstBytes === 'OggS') {
+            Log::info('Valid OGG audio content detected');
+            return true;
+        }
+
+        // Check for MP3 format
+        $firstBytes = substr($content, 0, 3);
+        if ($firstBytes === 'ID3' || $firstBytes === "\xFF\xFB" || $firstBytes === "\xFF\xF3" || $firstBytes === "\xFF\xF2") {
+            Log::info('Valid MP3 audio content detected');
+            return true;
+        }
+
+        Log::warning('Audio content does not match known formats', [
+            'first_bytes' => bin2hex(substr($content, 0, min(16, $length)))
+        ]);
+
+        // For now, accept any non-empty content as valid audio
+        // since audio formats can be complex to validate
+        return $length > 0;
     }
 
     /**
@@ -1247,7 +1325,7 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
      * Decrypt WhatsApp encrypted media using mediaKey
      * WhatsApp uses AES-256-CBC with HKDF key derivation
      */
-    private function decryptWhatsAppMedia(string $encryptedContent, array $messageInfo): ?string
+    private function decryptWhatsAppMedia(string $encryptedContent, array $messageInfo, string $mediaType = 'image'): ?string
     {
         try {
             $mediaKey = $messageInfo['mediaKey'] ?? null;
@@ -1258,11 +1336,8 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
                 return null;
             }
 
-            // Determine media type for HKDF info string
-            $type = $messageInfo['type'] ?? 'image';
-
-            // Generate decryption keys using HKDF
-            $keys = $this->getDecryptionKeys($mediaKey, $type);
+            // Generate decryption keys using HKDF with correct media type
+            $keys = $this->getDecryptionKeys($mediaKey, $mediaType);
 
             if (!$keys) {
                 Log::warning('Failed to generate decryption keys');
@@ -1274,11 +1349,13 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
             $cipherKey = substr($keys, 16, 32);
 
             Log::info('HKDF key derivation successful', [
+                'media_type' => $mediaType,
                 'iv_hex' => bin2hex($iv),
                 'cipher_key_length' => strlen($cipherKey)
             ]);
 
             Log::info('Attempting WhatsApp media decryption', [
+                'media_type' => $mediaType,
                 'content_length' => strlen($encryptedContent),
                 'cipher_key_length' => strlen($cipherKey),
                 'iv_length' => strlen($iv),
@@ -1520,6 +1597,9 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
      */
     private function getExtensionFromMimeType(string $mimeType): string
     {
+        // Extract main mimetype (remove parameters like ; codecs=opus)
+        $mainMimeType = explode(';', $mimeType)[0];
+
         $extensions = [
             'image/jpeg' => 'jpg',
             'image/png' => 'png',
@@ -1537,7 +1617,7 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
             'application/zip' => 'zip',
         ];
 
-        return $extensions[$mimeType] ?? 'file';
+        return $extensions[$mainMimeType] ?? 'file';
     }
 
     /**

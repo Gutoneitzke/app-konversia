@@ -49,10 +49,10 @@ class MessageController extends Controller
         // Validar entrada - pode ser texto ou arquivo
         $request->validate([
             'content' => 'required_without:file|string|max:4096',
-            'file' => 'required_without:content|file|max:15360|mimes:jpg,jpeg,png,gif,mp4,mp3,wav,pdf,doc,docx,txt,zip',
+            'file' => 'nullable|file|max:15360|mimes:jpg,jpeg,png,gif,mp4,mp3,wav,pdf,doc,docx,txt,zip',
         ]);
 
-        $validated = $request->validated();
+        $validated = $request->only(['content', 'file']);
 
         try {
             DB::beginTransaction();

@@ -29,7 +29,7 @@ const props = defineProps({
 /* =======================
    STATE
 ======================= */
-const form = useForm({ content: '', file: null })
+const form = useForm({ content: '' })
 const sending = ref(false)
 const loadingMessages = ref(true)
 const hasUnreadMessages = ref(false)
@@ -293,6 +293,12 @@ const getMediaUrl = (message) => {
     const url = message.file_url
     console.log('getMediaUrl for message', message.id, message.type, ':', url)
     return url
+}
+
+const isMediaPlaceholder = (content) => {
+    if (!content) return false
+    const placeholders = ['[Imagem]', '[Vídeo]', '[Áudio]', '[Documento]', '[Sticker]', '[Localização]', '[Contato]', '[Link]', '[Mensagem não suportada]']
+    return placeholders.includes(content.trim())
 }
 
 const handleImageError = (event) => {
@@ -650,7 +656,7 @@ const reopenConversation = () => {
                                 class="rounded-2xl px-4 py-3"
                             >
                                 <!-- Conteúdo de texto (se houver) -->
-                                <div v-if="message.content && message.type !== 'sticker'" class="text-sm leading-relaxed mb-2">
+                                <div v-if="message.content && message.type !== 'sticker' && !isMediaPlaceholder(message.content)" class="text-sm leading-relaxed mb-2">
                                     {{ message.content }}
                                 </div>
 
@@ -660,7 +666,7 @@ const reopenConversation = () => {
                                         :src="getMediaUrl(message)"
                                         class="max-w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                                         @click="openMediaModal(message)"
-                                        style="max-height: 300px;"
+                                        style="width: 312px;"
                                         :class="{ 'max-w-xs': message.type === 'sticker' }"
                                     />
                                 </div>
@@ -669,7 +675,7 @@ const reopenConversation = () => {
                                     <video
                                         controls
                                         class="max-w-full h-auto rounded-lg"
-                                        style="max-height: 300px;"
+                                        style="width: 312px;"
                                     >
                                         <source :src="getMediaUrl(message)" :type="message.file_mime_type">
                                         Seu navegador não suporta o elemento de vídeo.
@@ -677,7 +683,7 @@ const reopenConversation = () => {
                                 </div>
 
                                 <div v-else-if="message.type === 'audio'" class="mb-2">
-                                    <audio controls class="w-full">
+                                    <audio controls class="w-full max-w-lg" style="width: 312px;">
                                         <source :src="getMediaUrl(message)" :type="message.file_mime_type">
                                         Seu navegador não suporta o elemento de áudio.
                                     </audio>
