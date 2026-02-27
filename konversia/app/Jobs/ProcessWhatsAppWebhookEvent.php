@@ -42,20 +42,8 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
      */
     public function handle(WhatsAppService $whatsappService): void
     {
-        Log::info('=== INÍCIO PROCESSAMENTO WEBHOOK ===', [
-            'number_id' => $this->numberId,
-            'event_type' => $this->eventType,
-            'timestamp' => now()->toISOString(),
-            'has_data' => !empty($this->eventData)
-        ]);
 
         try {
-            Log::info('Processando evento WhatsApp webhook', [
-                'number_id' => $this->numberId,
-                'event_type' => $this->eventType,
-                'data_keys' => array_keys($this->eventData),
-                'data_sample' => json_encode(array_slice($this->eventData, 0, 2))
-            ]);
 
             // Buscar WhatsAppNumber pelo JID com fallback inteligente
             $whatsappNumber = $this->findWhatsAppNumberByJid($this->numberId);
@@ -141,10 +129,7 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
                     break;
 
                 default:
-                    Log::info('Evento WhatsApp não mapeado', [
-                        'event_type' => $this->eventType,
-                        'data' => $this->eventData
-                    ]);
+                    Log::info('Evento WhatsApp não mapeado: ' . $this->eventType);
                     break;
             }
 
@@ -299,10 +284,7 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
 
         $whatsappService->saveQRCode($whatsappNumber->id, $qrCode);
 
-        Log::info('QR Code salvo para WhatsApp', [
-            'whatsapp_number_id' => $whatsappNumber->id,
-            'session_id' => $session->id
-        ]);
+        Log::info('QR Code salvo', ['id' => $whatsappNumber->id]);
     }
 
     /**
@@ -418,32 +400,14 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
                 $messageType = 'video';
                 $mediaMetadata = $messageData['videoMessage'];
             } elseif (isset($messageData['audioMessage'])) {
-                Log::info('AUDIO MESSAGE DETECTED', [
-                    'has_audio_message' => isset($messageData['audioMessage']),
-                    'audio_keys' => array_keys($messageData['audioMessage'] ?? []),
-                    'has_url' => isset($messageData['audioMessage']['URL']),
-                    'url_value' => $messageData['audioMessage']['URL'] ?? 'NO_AUDIO_URL'
-                ]);
                 $content = '';
                 $messageType = 'audio';
                 $mediaMetadata = $messageData['audioMessage'];
             } elseif (isset($messageData['documentMessage'])) {
-                Log::info('DOCUMENT MESSAGE DETECTED', [
-                    'has_document_message' => isset($messageData['documentMessage']),
-                    'document_keys' => array_keys($messageData['documentMessage'] ?? []),
-                    'has_url' => isset($messageData['documentMessage']['URL']),
-                    'url_value' => $messageData['documentMessage']['URL'] ?? 'NO_DOCUMENT_URL'
-                ]);
                 $content = $messageData['documentMessage']['fileName'] ?? '';
                 $messageType = 'document';
                 $mediaMetadata = $messageData['documentMessage'];
             } elseif (isset($messageData['stickerMessage'])) {
-                Log::info('STICKER MESSAGE DETECTED', [
-                    'has_sticker_message' => isset($messageData['stickerMessage']),
-                    'sticker_keys' => array_keys($messageData['stickerMessage'] ?? []),
-                    'has_url' => isset($messageData['stickerMessage']['URL']),
-                    'url_value' => $messageData['stickerMessage']['URL'] ?? 'NO_URL'
-                ]);
                 $content = '[Sticker]';
                 $messageType = 'sticker';
                 $mediaMetadata = $messageData['stickerMessage'];
@@ -536,27 +500,12 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
                 if ($contact->name !== $newPushName) {
                     $contact->update(['name' => $newPushName]);
 
-                    Log::info('Nome do contato atualizado via PushName', [
-                        'contact_id' => $contact->id,
-                        'jid' => $jid,
-                        'old_name' => $oldPushName,
-                        'new_name' => $newPushName,
-                        'whatsapp_number_id' => $whatsappNumber->id
-                    ]);
+                    Log::info('Contato atualizado', ['id' => $contact->id, 'name' => $newPushName]);
                 } else {
-                    Log::info('PushName recebido mas nome já está atualizado', [
-                        'contact_id' => $contact->id,
-                        'jid' => $jid,
-                        'name' => $newPushName,
-                        'whatsapp_number_id' => $whatsappNumber->id
-                    ]);
+                    Log::info('PushName já atualizado', ['id' => $contact->id]);
                 }
             } else {
-                Log::info('Contato não encontrado para PushName', [
-                    'jid' => $jid,
-                    'new_name' => $newPushName,
-                    'whatsapp_number_id' => $whatsappNumber->id
-                ]);
+                Log::info('Novo contato PushName', ['jid' => $jid]);
             }
 
         } catch (\Exception $e) {
@@ -899,16 +848,6 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
             return $mediaData;
         }
 
-        Log::info('=== PROCESSING INBOUND MEDIA ===', [
-            'type' => $type,
-            'has_url_in_info' => isset($messageInfo['URL']),
-            'has_url_in_data' => isset($messageData['URL']) || isset($messageData[$type . 'Message']['URL']),
-            'sticker_url' => $messageData['stickerMessage']['URL'] ?? 'NO_STICKER_URL',
-            'message_data_keys' => array_keys($messageData),
-            'message_info_keys' => array_keys($messageInfo),
-            'full_message_data' => $messageData,
-            'full_message_info' => $messageInfo
-        ]);
 
         // Extrair informações comuns
         $mediaData['file_mime_type'] = $messageInfo['mimetype'] ?? $messageInfo['Mimetype'] ?? null;
@@ -917,27 +856,18 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
         // Procurar URL nos dados da mensagem
         $mediaUrl = null;
 
-        // 1. Procurar na estrutura específica do tipo (ex: stickerMessage.URL)
+        // Procurar URL da mídia
         if (isset($messageData[$type . 'Message']['URL'])) {
             $mediaUrl = $messageData[$type . 'Message']['URL'];
-            Log::info('Found URL in message data', ['url' => $mediaUrl, 'type' => $type]);
         }
-        // 2. Procurar no nível raiz do messageData
         elseif (isset($messageData['URL'])) {
             $mediaUrl = $messageData['URL'];
         }
-        // 3. Procurar no messageInfo (fallback)
         elseif (isset($messageInfo['URL'])) {
             $mediaUrl = $messageInfo['URL'];
-            Log::info('Found URL in message info (fallback)', ['url' => $mediaUrl, 'type' => $type]);
         }
         else {
-            Log::warning('No URL found for media', [
-                'type' => $type,
-                'message_data_keys' => array_keys($messageData),
-                'message_info_keys' => array_keys($messageInfo),
-                'specific_message_keys' => isset($messageData[$type . 'Message']) ? array_keys($messageData[$type . 'Message']) : 'NO_SPECIFIC_MESSAGE'
-            ]);
+            Log::warning('No URL found for media', ['type' => $type]);
         }
 
         // Baixar e armazenar mídia localmente se URL foi encontrada
@@ -1243,14 +1173,12 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
         // Check for OGG format (WhatsApp uses OGG/Opus for audio)
         $firstBytes = substr($content, 0, 4);
         if ($firstBytes === 'OggS') {
-            Log::info('Valid OGG audio content detected');
             return true;
         }
 
         // Check for MP3 format
         $firstBytes = substr($content, 0, 3);
         if ($firstBytes === 'ID3' || $firstBytes === "\xFF\xFB" || $firstBytes === "\xFF\xF3" || $firstBytes === "\xFF\xF2") {
-            Log::info('Valid MP3 audio content detected');
             return true;
         }
 
@@ -1348,19 +1276,7 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
             $iv = substr($keys, 0, 16);
             $cipherKey = substr($keys, 16, 32);
 
-            Log::info('HKDF key derivation successful', [
-                'media_type' => $mediaType,
-                'iv_hex' => bin2hex($iv),
-                'cipher_key_length' => strlen($cipherKey)
-            ]);
 
-            Log::info('Attempting WhatsApp media decryption', [
-                'media_type' => $mediaType,
-                'content_length' => strlen($encryptedContent),
-                'cipher_key_length' => strlen($cipherKey),
-                'iv_length' => strlen($iv),
-                'has_expected_hash' => !empty($fileEncSHA256)
-            ]);
 
             // Remove the last 10 bytes (MAC) from the encrypted file
             $ciphertext = substr($encryptedContent, 0, strlen($encryptedContent) - 10);
@@ -1435,9 +1351,6 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
 
             // Check if decrypted content is a valid image
             if ($this->isValidImageContent($decrypted)) {
-                Log::info('WhatsApp media decryption successful - valid image', [
-                    'decrypted_length' => strlen($decrypted)
-                ]);
                 return $decrypted;
             } else {
                 // Decryption succeeded but result is not a valid image

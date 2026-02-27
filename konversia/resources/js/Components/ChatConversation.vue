@@ -290,9 +290,7 @@ const getFileIcon = (mimeType) => {
 
 const getMediaUrl = (message) => {
     // Todas as mensagens agora usam URL local (armazenamento interno)
-    const url = message.file_url
-    console.log('getMediaUrl for message', message.id, message.type, ':', url)
-    return url
+    return message.file_url
 }
 
 const isMediaPlaceholder = (content) => {
@@ -302,8 +300,7 @@ const isMediaPlaceholder = (content) => {
 }
 
 const handleImageError = (event) => {
-    console.error('Erro ao carregar imagem:', event.target.src, event)
-    console.error('Message object:', event.target.closest('[data-message-id]')?.dataset?.messageId)
+    console.error('Erro ao carregar mídia:', event.target.src)
 }
 
 const openMediaModal = (message) => {
