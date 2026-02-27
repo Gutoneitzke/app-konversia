@@ -191,13 +191,6 @@ class WhatsAppService
 
             if ($response->successful()) {
                 $data = $response->json();
-
-                // Mapear status do serviço Go para status interno
-                $isConnected = $data['IsConnected'];
-                $isLoggedIn = $data['IsLoggedIn'];
-
-                // ✅ Removida confirmação automática - só confirmar via webhook "Connected"
-
                 return $data;
             }
 

@@ -311,7 +311,7 @@ class ProcessIncomingMessage implements ShouldQueue
             $conversation = $this->findOrCreateConversation($session);
             $relativePath = "whatsapp/inbound/{$company->id}/{$conversation->id}/{$uniqueName}";
 
-            // Salvar arquivo
+            // Salvar arquivo (usando disk public para acesso direto)
             Storage::disk('public')->put($relativePath, $decryptedContent);
 
             // Limpeza automática de arquivos antigos (mais de 30 dias)

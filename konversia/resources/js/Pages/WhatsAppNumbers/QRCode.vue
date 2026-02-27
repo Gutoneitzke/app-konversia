@@ -12,28 +12,79 @@ const props = defineProps({
 
 const checkingStatus = ref(false);
 const currentQR = ref(props.qrCode);
+const isConnected = ref(false);
+const connectionError = ref(null);
+const initialStatusChecked = ref(false);
 let statusInterval = null;
 let qrInterval = null;
 
 const checkStatus = () => {
+    // Sempre verificar status periodicamente
+    // Removido: condições que impediam verificação
+
     checkingStatus.value = true;
-    axios.get(route('whatsapp-numbers.status', props.whatsappNumber.jid))
+
+    axios.get(route('whatsapp-numbers.status', props.whatsappNumber.id))
         .then(response => {
             const data = response.data;
+
+            // Marcar que já fez pelo menos uma verificação
+            if (!initialStatusChecked.value) {
+                initialStatusChecked.value = true;
+            }
+
+            // Atualizar status da conexão
             if (data && data.IsConnected && data.IsLoggedIn) {
-                // WhatsApp conectado com sucesso
-                router.visit(route('whatsapp-numbers.index'));
+                if (!isConnected.value) {
+                    console.log('🎉 WhatsApp conectado com sucesso!');
+                    isConnected.value = true;
+                    connectionError.value = null;
+                }
+                // Continuar verificando mesmo quando conectado (para detectar desconexões)
+            } else if (data && initialStatusChecked.value) {
+                console.log('📊 Status verificado:', {
+                    IsConnected: data.IsConnected,
+                    IsLoggedIn: data.IsLoggedIn,
+                    initialCheckDone: initialStatusChecked.value
+                });
+
+                // Se perdeu conexão após estar conectado, mostrar erro
+                if (isConnected.value && (!data.IsConnected || !data.IsLoggedIn)) {
+                    console.log('❌ Conexão perdida!');
+                    connectionError.value = 'Conexão perdida. Tente reconectar.';
+                    isConnected.value = false;
+                }
             }
         })
         .catch(error => {
             console.error('Erro ao verificar status:', error);
+
+            // Mostrar erro para o usuário
+            if (error.response && error.response.status === 404) {
+                connectionError.value = 'Número não encontrado. Verifique se o número ainda existe.';
+                clearIntervals();
+            } else if (error.response && error.response.status === 403) {
+                connectionError.value = 'Sem permissão para acessar este número.';
+                clearIntervals();
+            } else if (error.response && error.response.status >= 500) {
+                connectionError.value = 'Erro no servidor. Tente novamente mais tarde.';
+            } else {
+                connectionError.value = 'Erro ao verificar status da conexão.';
+            }
         })
         .finally(() => {
             checkingStatus.value = false;
         });
 };
 
+// Removido: funções de redirecionamento automático não são mais necessárias
+
 const refreshQR = () => {
+    // Atualizar QR periodicamente, mas não se há erro de conexão
+    if (connectionError.value) {
+        return;
+    }
+
     router.reload({
         preserveState: true,
         preserveScroll: true,
@@ -42,26 +93,46 @@ const refreshQR = () => {
             if (page.props.qrCode) {
                 currentQR.value = page.props.qrCode;
             }
+        },
+        onError: (error) => {
+            console.error('Erro ao atualizar QR:', error);
+            // Se erro ao atualizar QR, pode ser problema de sessão
+            if (error.response && error.response.status === 419) {
+                console.error('Sessão expirada durante atualização do QR');
+                clearIntervals();
+            }
         }
     });
 };
 
+const clearIntervals = () => {
+    if (statusInterval) {
+        clearInterval(statusInterval);
+        statusInterval = null;
+    }
+    if (qrInterval) {
+        clearInterval(qrInterval);
+        qrInterval = null;
+    }
+};
+
+const manualCheckStatus = () => {
+    checkStatus();
+};
+
 onMounted(() => {
-    // Verificar status a cada 3 segundos
-    statusInterval = setInterval(checkStatus, 3000);
+    // Aguardar alguns segundos antes de iniciar verificações para dar tempo do QR carregar
+    setTimeout(() => {
+        // Verificar status a cada 3 segundos
+        statusInterval = setInterval(checkStatus, 3000);
+    }, 2000);
 
     // Atualizar QR a cada 5 segundos (caso expire)
-    refreshQR();
     qrInterval = setInterval(refreshQR, 5000);
 });
 
 onUnmounted(() => {
-    if (statusInterval) {
-        clearInterval(statusInterval);
-    }
-    if (qrInterval) {
-        clearInterval(qrInterval);
-    }
+    clearIntervals();
 });
 </script>
 
@@ -99,10 +170,19 @@ onUnmounted(() => {
                                 </h3>
                             </div>
 
-                            <div v-if="currentQR" class="flex justify-center mb-8">
+                            <div v-if="currentQR" class="flex justify-center mb-6">
                                 <div class="relative p-4 bg-white rounded-2xl shadow-lg border border-slate-200">
                                     <img :src="`https://quickchart.io/qr?text=${encodeURIComponent(currentQR)}&size=300&margin=4&bgcolor=white&color=black&format=png`" alt="QR Code" class="w-64 h-64 rounded-xl" />
                                     <div class="absolute inset-0 bg-gradient-to-r from-emerald-400/10 via-transparent to-cyan-400/10 rounded-2xl"></div>
+                                </div>
+                            </div>
+
+                            <div v-if="currentQR" class="text-center mb-8">
+                                <div class="inline-flex items-center text-amber-600 bg-amber-50 px-4 py-2 rounded-lg border border-amber-200">
+                                    <svg class="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                                    </svg>
+                                    <span class="text-sm font-medium">O QR Code pode expirar em alguns minutos. Se isso acontecer, volte à tela anterior e abra uma nova conexão.</span>
                                 </div>
                             </div>
 
@@ -117,8 +197,8 @@ onUnmounted(() => {
                                         </div>
                                     </div>
                                 </div>
-                                <p class="mt-4 text-lg font-medium text-slate-700">Aguardando QR Code...</p>
-                                <p class="mt-2 text-sm text-slate-600">O código será gerado automaticamente</p>
+                                <p class="mt-4 text-lg font-medium text-slate-700">{{ initialStatusChecked ? 'Aguardando conexão...' : 'Preparando verificação...' }}</p>
+                                <p class="mt-2 text-sm text-slate-600">{{ initialStatusChecked ? 'Escaneie o QR Code com seu WhatsApp' : 'O código será gerado automaticamente' }}</p>
                             </div>
 
                             <div class="bg-slate-50/80 rounded-2xl p-6 mb-8 border border-slate-200/50">
@@ -152,9 +232,44 @@ onUnmounted(() => {
                                 </div>
                             </div>
 
+                            <!-- Status da Conexão -->
+                            <div v-if="isConnected" class="text-center mb-6">
+                                <div class="inline-flex items-center text-green-600 bg-green-50 px-4 py-2 rounded-lg border border-green-200">
+                                    <svg class="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                    <span class="text-sm font-medium">WhatsApp Conectado! Seu número está pronto para receber mensagens.</span>
+                                </div>
+                            </div>
+
+                            <div v-else-if="connectionError" class="text-center mb-6">
+                                <div class="inline-flex items-center text-red-600 bg-red-50 px-4 py-2 rounded-lg border border-red-200">
+                                    <svg class="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                                    </svg>
+                                    <span class="text-sm font-medium">{{ connectionError }}</span>
+                                </div>
+                            </div>
+
+                            <div v-else-if="initialStatusChecked" class="text-center mb-6">
+                                <div class="inline-flex items-center text-blue-600 bg-blue-50 px-4 py-2 rounded-lg border border-blue-200">
+                                    <svg class="animate-pulse w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M12 15h4.01M12 21h4.01"></path>
+                                    </svg>
+                                    <span class="text-sm font-medium">Aguardando Conexão - Escaneie o QR Code com seu WhatsApp para conectar</span>
+                                </div>
+                            </div>
+
                             <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                                <Link
+                                    :href="route('whatsapp-numbers.index')"
+                                    class="inline-flex items-center px-6 py-3 bg-white/80 backdrop-blur-sm rounded-xl font-semibold text-base text-slate-900 shadow-lg ring-1 ring-slate-200/50 hover:bg-white hover:shadow-xl transition-all duration-200"
+                                >
+                                    ← Voltar para Lista
+                                </Link>
+
                                 <button
-                                    @click="checkStatus"
+                                    @click="manualCheckStatus"
                                     :disabled="checkingStatus"
                                     class="group inline-flex items-center px-8 py-3 bg-gradient-to-r from-emerald-500 to-cyan-500 rounded-xl font-semibold text-base text-white shadow-lg hover:shadow-xl hover:from-emerald-600 hover:to-cyan-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 transition-all duration-200 transform hover:-translate-y-0.5 disabled:opacity-50"
                                 >
@@ -162,16 +277,13 @@ onUnmounted(() => {
                                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                     </svg>
-                                    <span v-if="checkingStatus">Verificando Conexão...</span>
+                                    <svg v-else-if="isConnected" class="w-5 h-5 mr-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                    <span v-if="checkingStatus">Verificando...</span>
+                                    <span v-else-if="isConnected">Verificar Novamente</span>
                                     <span v-else>Verificar Conexão</span>
                                 </button>
-
-                                <Link
-                                    :href="route('whatsapp-numbers.index')"
-                                    class="inline-flex items-center px-6 py-3 bg-white/80 backdrop-blur-sm rounded-xl font-semibold text-base text-slate-900 shadow-lg ring-1 ring-slate-200/50 hover:bg-white hover:shadow-xl transition-all duration-200"
-                                >
-                                    ← Voltar
-                                </Link>
                             </div>
                         </div>
                     </div>

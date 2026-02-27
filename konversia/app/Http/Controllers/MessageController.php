@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreMessageRequest;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\WhatsAppService;
@@ -21,9 +22,10 @@ class MessageController extends Controller
     /**
      * Enviar mensagem em uma conversa
      */
-    public function store(Request $request, Conversation $conversation)
+    public function store(StoreMessageRequest $request, Conversation $conversation)
     {
         $user = $request->user();
+
 
         // Se não há usuário autenticado e é uma requisição Inertia/AJAX, retornar erro adequado
         if (!$user) {
@@ -46,29 +48,53 @@ class MessageController extends Controller
             abort(403);
         }
 
-        // Validar entrada - pode ser texto ou arquivo
-        $request->validate([
-            'content' => 'required_without:file|string|max:4096',
-            'file' => 'nullable|file|max:15360|mimes:jpg,jpeg,png,gif,mp4,mp3,wav,pdf,doc,docx,txt,zip',
-        ]);
+        // Validação já foi feita pelo StoreMessageRequest
+        $validated = $request->only(['content']);
+        $uploadedFiles = $request->getValidatedFiles();
 
-        $validated = $request->only(['content', 'file']);
+        // Preparar dados para processamento
+        $validated['files'] = $uploadedFiles;
 
         try {
             DB::beginTransaction();
 
-            // Determinar tipo de mensagem e processar conteúdo
-            $messageData = $this->processMessageContent($validated, $conversation, $user);
+            $messages = [];
+            $hasFiles = isset($validated['files']) && !empty($validated['files']);
 
-            // Criar mensagem no banco
-            $message = Message::create(array_merge([
-                'conversation_id' => $conversation->id,
-                'user_id' => $user->id,
-                'department_id' => $conversation->department_id,
-                'direction' => 'outbound',
-                'sent_at' => now(),
-                'delivery_status' => 'pending',
-            ], $messageData));
+            // Se há arquivos, criar uma mensagem para cada arquivo
+            if ($hasFiles) {
+                foreach ($validated['files'] as $file) {
+                    $messageData = $this->processMessageContent([
+                        'content' => $validated['content'] ?? null,
+                        'file' => $file
+                    ], $conversation, $user);
+
+                    $message = Message::create(array_merge([
+                        'conversation_id' => $conversation->id,
+                        'user_id' => $user->id,
+                        'department_id' => $conversation->department_id,
+                        'direction' => 'outbound',
+                        'sent_at' => now(),
+                        'delivery_status' => 'pending',
+                    ], $messageData));
+
+                    $messages[] = $message;
+                }
+            } else {
+                // Mensagem de texto apenas
+                $messageData = $this->processMessageContent($validated, $conversation, $user);
+
+                $message = Message::create(array_merge([
+                    'conversation_id' => $conversation->id,
+                    'user_id' => $user->id,
+                    'department_id' => $conversation->department_id,
+                    'direction' => 'outbound',
+                    'sent_at' => now(),
+                    'delivery_status' => 'pending',
+                ], $messageData));
+
+                $messages[] = $message;
+            }
 
             // Atualizar conversa
             $conversation->update([
@@ -85,20 +111,24 @@ class MessageController extends Controller
                 // Obter numero de destino (do contato)
                 $to = $conversation->getContactJid();
 
-                Log::info('MessageController - Enviando mensagem', [
-                    'message_id' => $message->id,
-                    'conversation_id' => $conversation->id,
-                    'contact_jid' => $to,
-                    'message_type' => $message->type
-                ]);
+                foreach ($messages as $message) {
+                    Log::info('MessageController - Enviando mensagem', [
+                        'message_id' => $message->id,
+                        'conversation_id' => $conversation->id,
+                        'contact_jid' => $to,
+                        'message_type' => $message->type,
+                        'file_name' => $message->file_name ?? null
+                    ]);
 
-                $this->whatsappService->sendMessage($message, $to);
+                    $this->whatsappService->sendMessage($message, $to);
+                }
             } catch (\Exception $e) {
-                Log::error('Erro ao enviar mensagem WhatsApp', [
-                    'message_id' => $message->id,
+                Log::error('Erro ao enviar mensagens WhatsApp', [
+                    'conversation_id' => $conversation->id,
+                    'messages_count' => count($messages),
                     'error' => $e->getMessage()
                 ]);
-                // Não falhamos a requisição se o envio falhar, pois a mensagem já está salva
+                // Não falhamos a requisição se o envio falhar, pois as mensagens já estão salvas
                 // O job de envio tratará o erro e atualizará o status
             }
 
@@ -198,11 +228,11 @@ class MessageController extends Controller
             $extension = $file->getClientOriginalExtension();
             $uniqueName = time() . '_' . uniqid() . '.' . $extension;
 
-            // Caminho relativo: whatsapp/{company_id}/{conversation_id}/
-            $relativePath = "whatsapp/{$conversation->company_id}/{$conversation->id}/{$uniqueName}";
+            // Caminho relativo: whatsapp/outbound/{company_id}/{conversation_id}/
+            $relativePath = "whatsapp/outbound/{$conversation->company_id}/{$conversation->id}/{$uniqueName}";
 
-            // Salvar arquivo
-            $file->storeAs("public/whatsapp/{$conversation->company_id}/{$conversation->id}", $uniqueName);
+            // Salvar arquivo usando disk public (acessível via /storage/)
+            $saved = \Illuminate\Support\Facades\Storage::disk('public')->put($relativePath, file_get_contents($file->getRealPath()));
 
             // Metadados específicos do tipo
             $mediaMetadata = $this->extractMediaMetadata($file, $type);
@@ -309,4 +339,5 @@ class MessageController extends Controller
 
         return $metadata;
     }
+
 }

@@ -104,6 +104,10 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
                     $this->processMessageEvent($session, $whatsappNumber);
                     break;
 
+                case 'Picture': // Evento de imagem (pode ser tratado como mensagem)
+                    $this->processMessageEvent($session, $whatsappNumber);
+                    break;
+
                 case 'PushName': // Mudança de nome do contato
                     $this->processPushNameEvent($session, $whatsappNumber);
                     break;
@@ -828,11 +832,11 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
             'test_path' => $testPath,
             'storage_result' => $result,
             'file_exists' => \Illuminate\Support\Facades\Storage::disk('public')->exists($testPath),
-            'full_path' => storage_path('app/public/' . $testPath)
+            'full_path' => storage_path('app/' . $testPath)
         ]);
 
-        // Test URL generation
-        $url = \Illuminate\Support\Facades\Storage::disk('public')->url($testPath);
+        // Test URL generation (local disk doesn't have URLs)
+        $url = 'file://' . storage_path('app/' . $testPath);
         Log::info('URL generation test', [
             'generated_url' => $url,
             'expected_pattern' => '/storage/whatsapp/inbound/test/test.webp'
@@ -960,7 +964,7 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
                     'content_length' => strlen($rawContent)
                 ]);
 
-                // Salvar diretamente sem descriptografia
+                // Salvar diretamente sem descriptografia (usando disk public para acesso direto)
                 $relativePath = "whatsapp/inbound/{$company->id}/webhook/{$uniqueName}";
                 $saved = \Illuminate\Support\Facades\Storage::disk('public')->put($relativePath, $rawContent);
 

@@ -67,4 +67,6 @@ Route::middleware([
     Route::get('/auth/check', function () {
         return response()->json(['authenticated' => auth()->check()]);
     })->name('auth.check');
+
+
 });

@@ -239,8 +239,4 @@ class WhatsAppNumber extends Model
         $this->update(['settings' => $settings]);
     }
 
-    public function getRouteKeyName()
-    {
-        return 'jid';
-    }
 }

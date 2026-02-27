@@ -207,7 +207,9 @@ class SendWhatsAppMessage implements ShouldQueue
      */
     private function prepareMessagePayload(): array
     {
-        $baseUrl = url('/');
+        // Para mídias outbound, usar URL configurada para o whatsapp-service
+        // Esta URL deve ser acessível pelo container do whatsapp-service
+        $baseUrl = config('services.whatsapp.laravel_url', config('app.url'));
 
         switch ($this->message->type) {
             case 'text':
@@ -220,7 +222,7 @@ class SendWhatsAppMessage implements ShouldQueue
                     'ImageMessage' => [
                         'Caption' => $this->message->content, // optional caption
                         'Mimetype' => $this->message->file_mime_type,
-                        'URL' => $baseUrl . Storage::url($this->message->file_path)
+                        'URL' => config('app.url') . $this->message->getFileUrl()
                     ]
                 ];
 
@@ -229,7 +231,7 @@ class SendWhatsAppMessage implements ShouldQueue
                     'VideoMessage' => [
                         'Caption' => $this->message->content, // optional caption
                         'Mimetype' => $this->message->file_mime_type,
-                        'URL' => $baseUrl . Storage::url($this->message->file_path)
+                        'URL' => config('app.url') . $this->message->getFileUrl()
                     ]
                 ];
 
@@ -237,7 +239,7 @@ class SendWhatsAppMessage implements ShouldQueue
                 return [
                     'AudioMessage' => [
                         'Mimetype' => $this->message->file_mime_type,
-                        'URL' => $baseUrl . Storage::url($this->message->file_path),
+                        'URL' => config('app.url') . $this->message->getFileUrl(),
                         'PTT' => $this->message->media_metadata['voice_note'] ?? false
                     ]
                 ];
@@ -248,7 +250,7 @@ class SendWhatsAppMessage implements ShouldQueue
                         'Title' => $this->message->media_metadata['title'] ?? null,
                         'FileName' => $this->message->file_name,
                         'Mimetype' => $this->message->file_mime_type,
-                        'URL' => $baseUrl . Storage::url($this->message->file_path)
+                        'URL' => config('app.url') . $this->message->getFileUrl()
                     ]
                 ];
 

@@ -47,9 +47,16 @@ class WhatsAppNumberController extends Controller
     /**
      * Exibir QR Code
      */
-    public function showQR(WhatsAppNumber $whatsappNumber, Request $request)
+    public function showQR(Request $request)
     {
         $user = $request->user();
+        $identifier = $request->route('whatsappNumber');
+
+        $whatsappNumber = WhatsAppNumber::find($identifier);
+
+        if (!$whatsappNumber) {
+            abort(404, 'WhatsApp Number not found');
+        }
 
         if (!$user->isSuperAdmin() && $whatsappNumber->company_id !== $user->company_id) {
             abort(403);
@@ -66,9 +73,16 @@ class WhatsAppNumberController extends Controller
     /**
      * Conectar número WhatsApp
      */
-    public function connect(WhatsAppNumber $whatsappNumber, Request $request)
+    public function connect(Request $request)
     {
         $user = $request->user();
+        $identifier = $request->route('whatsappNumber');
+
+        $whatsappNumber = WhatsAppNumber::find($identifier);
+
+        if (!$whatsappNumber) {
+            abort(404, 'WhatsApp Number not found');
+        }
 
         // Verificar permissão
         if (!$user->isSuperAdmin() && $whatsappNumber->company_id !== $user->company_id) {
@@ -124,9 +138,16 @@ class WhatsAppNumberController extends Controller
     /**
      * Desconectar número WhatsApp
      */
-    public function disconnect(WhatsAppNumber $whatsappNumber, Request $request)
+    public function disconnect(Request $request)
     {
         $user = $request->user();
+        $identifier = $request->route('whatsappNumber');
+
+        $whatsappNumber = WhatsAppNumber::find($identifier);
+
+        if (!$whatsappNumber) {
+            abort(404, 'WhatsApp Number not found');
+        }
 
         // Verificar permissão
         if (!$user->isSuperAdmin() && $whatsappNumber->company_id !== $user->company_id) {
@@ -149,9 +170,16 @@ class WhatsAppNumberController extends Controller
     /**
      * Verificar status da conexão
      */
-    public function checkStatus(WhatsAppNumber $whatsappNumber, Request $request)
+    public function checkStatus(Request $request)
     {
         $user = $request->user();
+        $identifier = $request->route('whatsappNumber');
+
+        $whatsappNumber = WhatsAppNumber::find($identifier);
+
+        if (!$whatsappNumber) {
+            abort(404, 'WhatsApp Number not found');
+        }
 
         // Verificar permissão
         if (!$user->isSuperAdmin() && $whatsappNumber->company_id !== $user->company_id) {

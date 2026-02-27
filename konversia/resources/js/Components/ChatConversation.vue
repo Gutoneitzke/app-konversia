@@ -2,6 +2,8 @@
 import { Link, router, useForm } from '@inertiajs/vue3'
 import { onUnmounted, ref, nextTick, watch, onMounted } from 'vue'
 import TransferConversationModal from './TransferConversationModal.vue'
+import ToastNotification from './ToastNotification.vue'
+import { useToast } from '../Composables/useToast.js'
 
 /* =======================
    PROPS
@@ -29,12 +31,15 @@ const props = defineProps({
 /* =======================
    STATE
 ======================= */
-const form = useForm({ content: '' })
+const form = useForm({
+    content: '',
+    files: []
+})
 const sending = ref(false)
 const loadingMessages = ref(true)
 const hasUnreadMessages = ref(false)
-const selectedFile = ref(null)
-const filePreview = ref(null)
+const selectedFiles = ref([])
+const filePreviews = ref([])
 
 const messagesContainer = ref(null)
 const showTransferModal = ref(false)
@@ -43,6 +48,11 @@ const resolving = ref(false)
 const closing = ref(false)
 const reopening = ref(false)
 const showDropdown = ref(false)
+
+/* =======================
+   TOAST SYSTEM
+======================= */
+const { toasts, addToast, removeToast } = useToast()
 
 /*/**
  * Mensagens locais (NÃO muta props)
@@ -201,31 +211,34 @@ onUnmounted(() => {
    ACTIONS
 ======================= */
 const sendMessage = () => {
-    if (!form.content.trim() && !selectedFile.value) return
+    if (!form.content.trim() && selectedFiles.value.length === 0) return
 
     sending.value = true
 
-    const formData = new FormData()
+    form.content = form.content.trim()
 
-    if (form.content.trim()) {
-        formData.append('content', form.content)
-    }
-
-    if (selectedFile.value) {
-        formData.append('file', selectedFile.value)
-    }
+    // Adiciona arquivos direto no form
+    form.files = selectedFiles.value
 
     form.post(route('conversations.messages.store', props.conversation.id), {
-        data: formData,
+        forceFormData: true,
         preserveScroll: true,
         onSuccess: () => {
             form.reset()
-            clearSelectedFile()
+            form.files = []
+            clearSelectedFiles()
             scrollToBottom()
         },
         onError: (errors) => {
-            console.error('Erro ao enviar mensagem:', errors)
-            alert('Erro ao enviar mensagem. Tente novamente.')
+            console.error(errors)
+
+            let errorMessage =
+                errors.content ||
+                errors.files ||
+                errors.file ||
+                'Erro ao enviar mensagem.'
+
+            addToast(errorMessage, 'error')
         },
         onFinish: () => {
             sending.value = false
@@ -234,41 +247,56 @@ const sendMessage = () => {
 }
 
 const handleFileSelect = (event) => {
-    const file = event.target.files[0]
-    if (file) {
-        selectedFile.value = file
-        createFilePreview(file)
+    const files = Array.from(event.target.files)
+    if (files.length > 0) {
+        // Limitar a 20 arquivos
+        const validFiles = files.slice(0, 20)
+        selectedFiles.value = validFiles
+        createFilePreviews(validFiles)
     }
 }
 
-const createFilePreview = (file) => {
-    if (file.type.startsWith('image/')) {
-        const reader = new FileReader()
-        reader.onload = (e) => {
-            filePreview.value = {
+const createFilePreviews = (files) => {
+    filePreviews.value = files.map(file => {
+        if (file.type.startsWith('image/')) {
+            const reader = new FileReader()
+            const preview = {
                 type: 'image',
-                url: e.target.result,
+                url: null, // será preenchido quando carregar
                 name: file.name,
-                size: formatFileSize(file.size)
+                size: formatFileSize(file.size),
+                file: file
+            }
+
+            reader.onload = (e) => {
+                preview.url = e.target.result
+            }
+            reader.readAsDataURL(file)
+
+            return preview
+        } else {
+            return {
+                type: 'file',
+                name: file.name,
+                size: formatFileSize(file.size),
+                icon: getFileIcon(file.type),
+                file: file
             }
         }
-        reader.readAsDataURL(file)
-    } else {
-        filePreview.value = {
-            type: 'file',
-            name: file.name,
-            size: formatFileSize(file.size),
-            icon: getFileIcon(file.type)
-        }
-    }
+    })
 }
 
-const clearSelectedFile = () => {
-    selectedFile.value = null
-    filePreview.value = null
+const clearSelectedFiles = () => {
+    selectedFiles.value = []
+    filePreviews.value = []
     // Limpar o input file
     const fileInput = document.querySelector('input[type="file"]')
     if (fileInput) fileInput.value = ''
+}
+
+const removeFile = (index) => {
+    selectedFiles.value.splice(index, 1)
+    filePreviews.value.splice(index, 1)
 }
 
 const formatFileSize = (bytes) => {
@@ -771,33 +799,58 @@ const reopenConversation = () => {
 
             <!-- Campo de envio ativo -->
             <div v-else class="space-y-3">
-                <!-- Preview do arquivo selecionado -->
-                <div v-if="filePreview" class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                    <div v-if="filePreview.type === 'image'" class="flex items-center gap-3">
-                        <img :src="filePreview.url" class="w-12 h-12 object-cover rounded" />
-                        <div class="flex-1 min-w-0">
-                            <p class="text-sm font-medium text-gray-900 truncate">{{ filePreview.name }}</p>
-                            <p class="text-xs text-gray-500">{{ filePreview.size }}</p>
+                <!-- Preview dos arquivos selecionados -->
+                <div v-if="filePreviews.length > 0" class="relative">
+                    <!-- Container com scroll para muitos arquivos -->
+                    <div class="max-h-32 overflow-y-auto border border-gray-200 rounded-lg bg-gray-50/50 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+                        <div class="p-3 space-y-2">
+                            <div v-for="(preview, index) in filePreviews" :key="index" class="flex items-center gap-3 p-2 bg-white rounded-md border border-gray-100 hover:bg-gray-50 transition-colors">
+                                <div v-if="preview.type === 'image'" class="flex items-center gap-3 flex-1 min-w-0">
+                                    <img :src="preview.url" class="w-10 h-10 object-cover rounded flex-shrink-0" />
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-sm font-medium text-gray-900 truncate">{{ preview.name }}</p>
+                                        <p class="text-xs text-gray-500">{{ preview.size }}</p>
+                                    </div>
+                                </div>
+                                <div v-else class="flex items-center gap-3 flex-1 min-w-0">
+                                    <div class="w-10 h-10 bg-gray-200 rounded flex items-center justify-center text-lg flex-shrink-0">
+                                        {{ preview.icon }}
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-sm font-medium text-gray-900 truncate">{{ preview.name }}</p>
+                                        <p class="text-xs text-gray-500">{{ preview.size }}</p>
+                                    </div>
+                                </div>
+                                <button
+                                    @click="removeFile(index)"
+                                    class="p-1 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
+                                    :disabled="sending"
+                                >
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                     </div>
-                    <div v-else class="flex items-center gap-3">
-                        <div class="w-12 h-12 bg-gray-200 rounded flex items-center justify-center text-xl">
-                            {{ filePreview.icon }}
+
+                    <!-- Contador de arquivos (sempre visível) -->
+                    <div class="mt-2 flex items-center justify-between text-xs text-gray-500 bg-white px-3 py-2 rounded-md border border-gray-200 shadow-sm">
+                        <div class="flex items-center gap-2">
+                            <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
+                            </svg>
+                            <span>{{ selectedFiles.length }} arquivo(s) selecionado(s)</span>
                         </div>
-                        <div class="flex-1 min-w-0">
-                            <p class="text-sm font-medium text-gray-900 truncate">{{ filePreview.name }}</p>
-                            <p class="text-xs text-gray-500">{{ filePreview.size }}</p>
-                        </div>
+                        <button
+                            v-if="selectedFiles.length > 0"
+                            @click="clearSelectedFiles()"
+                            class="text-red-500 hover:text-red-700 underline transition-colors"
+                            :disabled="sending"
+                        >
+                            Limpar todos
+                        </button>
                     </div>
-                    <button
-                        @click="clearSelectedFile"
-                        class="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-                        :disabled="sending"
-                    >
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                        </svg>
-                    </button>
                 </div>
 
                 <!-- Input de arquivo e texto -->
@@ -806,6 +859,7 @@ const reopenConversation = () => {
                     <label class="relative cursor-pointer">
                         <input
                             type="file"
+                            multiple
                             @change="handleFileSelect"
                             accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.zip"
                             class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -828,11 +882,11 @@ const reopenConversation = () => {
                         :disabled="sending"
                     />
 
-                    <button
-                        @click="sendMessage"
-                        :disabled="sending || (!form.content.trim() && !selectedFile)"
-                        class="inline-flex items-center justify-center h-12 w-12 bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-300 text-white rounded-full transition-colors duration-200 disabled:cursor-not-allowed"
-                    >
+                        <button
+                            @click="sendMessage"
+                            :disabled="sending || (!form.content.trim() && selectedFiles.length === 0)"
+                            class="inline-flex items-center justify-center h-12 w-12 bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-300 text-white rounded-full transition-colors duration-200 disabled:cursor-not-allowed"
+                        >
                         <svg v-if="sending" class="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -852,6 +906,19 @@ const reopenConversation = () => {
             :users="users"
             @close="showTransferModal = false"
             @transferred="handleTransferred"
+        />
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="fixed top-4 right-4 z-50 space-y-2">
+        <ToastNotification
+            v-for="toast in toasts"
+            :key="toast.id"
+            :message="toast.message"
+            :type="toast.type"
+            :duration="toast.duration"
+            :show="true"
+            @close="removeToast(toast.id)"
         />
     </div>
 </template>

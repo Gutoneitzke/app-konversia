@@ -137,7 +137,7 @@ class Message extends Model
             return null;
         }
 
-        // Return relative URL so it works in both container and host environments
+        // Return simple storage URL (all media is now public)
         return '/storage/' . $this->file_path;
     }
 
@@ -146,13 +146,18 @@ class Message extends Model
         return $this->getFileUrl();
     }
 
+
     public function getThumbnailUrl(): ?string
     {
         if (!$this->isMedia() || !isset($this->media_metadata['thumbnail_path'])) {
             return null;
         }
 
-        return Storage::disk('public')->url($this->media_metadata['thumbnail_path']);
+        // Return authenticated route for secure thumbnail access
+        return route('media.thumbnail', [
+            'conversation' => $this->conversation_id,
+            'message' => $this->id
+        ]);
     }
 
     public function getFormattedSize(): string
