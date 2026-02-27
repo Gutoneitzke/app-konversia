@@ -222,7 +222,7 @@ class SendWhatsAppMessage implements ShouldQueue
                     'ImageMessage' => [
                         'Caption' => $this->message->content, // optional caption
                         'Mimetype' => $this->message->file_mime_type,
-                        'URL' => config('app.url') . $this->message->getFileUrl()
+                        'URL' => $baseUrl . $this->message->getFileUrl()
                     ]
                 ];
 
@@ -231,7 +231,7 @@ class SendWhatsAppMessage implements ShouldQueue
                     'VideoMessage' => [
                         'Caption' => $this->message->content, // optional caption
                         'Mimetype' => $this->message->file_mime_type,
-                        'URL' => config('app.url') . $this->message->getFileUrl()
+                        'URL' => $baseUrl . $this->message->getFileUrl()
                     ]
                 ];
 
@@ -239,7 +239,7 @@ class SendWhatsAppMessage implements ShouldQueue
                 return [
                     'AudioMessage' => [
                         'Mimetype' => $this->message->file_mime_type,
-                        'URL' => config('app.url') . $this->message->getFileUrl(),
+                        'URL' => $baseUrl . $this->message->getFileUrl(),
                         'PTT' => $this->message->media_metadata['voice_note'] ?? false
                     ]
                 ];
@@ -250,7 +250,7 @@ class SendWhatsAppMessage implements ShouldQueue
                         'Title' => $this->message->media_metadata['title'] ?? null,
                         'FileName' => $this->message->file_name,
                         'Mimetype' => $this->message->file_mime_type,
-                        'URL' => config('app.url') . $this->message->getFileUrl()
+                        'URL' => $baseUrl . $this->message->getFileUrl()
                     ]
                 ];
 
