@@ -609,18 +609,21 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
      */
     protected function findOrCreateContact(WhatsAppNumber $whatsappNumber, string $jid, string $name): Contact
     {
+        // Normalizar JID para formato consistente
+        $normalizedJid = $this->normalizeJid($jid);
+
         $contact = Contact::where('whatsapp_number_id', $whatsappNumber->id)
-            ->where('jid', $jid)
+            ->where('jid', $normalizedJid)
             ->first();
 
         if (!$contact) {
             // Extrair número do telefone do JID (antes do @)
-            $phoneNumber = explode('@', $jid)[0] ?? $jid;
+            $phoneNumber = explode('@', $normalizedJid)[0] ?? $normalizedJid;
 
             $contact = Contact::create([
                 'company_id' => $whatsappNumber->company_id,
                 'whatsapp_number_id' => $whatsappNumber->id,
-                'jid' => $jid,
+                'jid' => $normalizedJid,
                 'name' => $name ?: 'Contato',
                 'phone_number' => $phoneNumber,
                 'is_blocked' => false,
@@ -629,7 +632,8 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
 
             Log::info('Novo contato criado', [
                 'contact_id' => $contact->id,
-                'jid' => $jid,
+                'original_jid' => $jid,
+                'normalized_jid' => $normalizedJid,
                 'name' => $name,
                 'phone_number' => $phoneNumber
             ]);
@@ -646,12 +650,15 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
      */
     protected function findOrCreateConversation(WhatsAppSession $session, Contact $contact, string $chatJid): Conversation
     {
+        // Normalizar chatJid para consistência
+        $normalizedChatJid = $this->normalizeJid($chatJid);
+
         // Determinar o departamento para esta mensagem
-        $department = $this->getDepartmentForMessage($session, $contact, $chatJid);
+        $department = $this->getDepartmentForMessage($session, $contact, $normalizedChatJid);
 
         // Buscar conversa existente por company_id e contact_jid (único por design)
         $conversation = Conversation::where('company_id', $session->company_id)
-            ->where('contact_jid', $chatJid)
+            ->where('contact_jid', $normalizedChatJid)
             ->first();
 
         if (!$conversation) {
@@ -660,7 +667,7 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
                 'whatsapp_session_id' => $session->id,
                 'department_id' => $department->id,
                 'contact_id' => $contact->id,
-                'contact_jid' => $chatJid,
+                'contact_jid' => $normalizedChatJid,
                 'contact_name' => $contact->name,
                 'status' => 'pending',
                 'last_message_at' => now(),
@@ -670,7 +677,8 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
                 'conversation_id' => $conversation->id,
                 'contact_id' => $contact->id,
                 'contact_name' => $contact->name,
-                'contact_jid' => $chatJid,
+                'original_chat_jid' => $chatJid,
+                'normalized_chat_jid' => $normalizedChatJid,
                 'department_id' => $department->id,
                 'department_name' => $department->name
             ]);
@@ -1719,5 +1727,65 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Normalizar JID para formato consistente do WhatsApp
+     */
+    protected function normalizeJid(string $jid): string
+    {
+        // Remover sufixos de dispositivo (ex: :1, :2, etc.)
+        $jid = preg_replace('/:\d+$/', '', $jid);
+
+        // Garantir que termine com @s.whatsapp.net
+        if (!str_contains($jid, '@')) {
+            $jid .= '@s.whatsapp.net';
+        } elseif (str_contains($jid, '@c.us')) {
+            $jid = str_replace('@c.us', '@s.whatsapp.net', $jid);
+        } elseif (!str_contains($jid, '@s.whatsapp.net')) {
+            // Se tem @ mas não é s.whatsapp.net, substituir
+            $parts = explode('@', $jid);
+            $jid = $parts[0] . '@s.whatsapp.net';
+        }
+
+        return $jid;
+    }
+
+    /**
+     * Atualizar JIDs existentes no banco que podem estar no formato incorreto
+     */
+    public static function updateExistingJids(): void
+    {
+        $self = new self('', '', []);
+
+        // Atualizar contatos
+        $contacts = \App\Models\Contact::all();
+        foreach ($contacts as $contact) {
+            $normalizedJid = $self->normalizeJid($contact->jid);
+            if ($normalizedJid !== $contact->jid) {
+                Log::info('Atualizando JID de contato', [
+                    'contact_id' => $contact->id,
+                    'old_jid' => $contact->jid,
+                    'new_jid' => $normalizedJid
+                ]);
+                $contact->update(['jid' => $normalizedJid]);
+            }
+        }
+
+        // Atualizar conversas
+        $conversations = \App\Models\Conversation::whereNotNull('contact_jid')->get();
+        foreach ($conversations as $conversation) {
+            $normalizedJid = $self->normalizeJid($conversation->contact_jid);
+            if ($normalizedJid !== $conversation->contact_jid) {
+                Log::info('Atualizando JID de conversa', [
+                    'conversation_id' => $conversation->id,
+                    'old_jid' => $conversation->contact_jid,
+                    'new_jid' => $normalizedJid
+                ]);
+                $conversation->update(['contact_jid' => $normalizedJid]);
+            }
+        }
+
+        Log::info('Atualização de JIDs concluída');
     }
 }

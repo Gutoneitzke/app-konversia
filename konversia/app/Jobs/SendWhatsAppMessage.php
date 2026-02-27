@@ -116,12 +116,28 @@ class SendWhatsAppMessage implements ShouldQueue
     private function processMessageSend(): void
     {
         try {
-            $whatsappServiceUrl = env('WHATSAPP_SERVICE_URL', 'http://localhost:8080');
+            $whatsappServiceUrl = config('services.whatsapp.service_url');
+
+            // Debug: Verificar JID sendo usado
+            Log::info('SendWhatsAppMessage - Verificação de JID', [
+                'message_id' => $this->message->id,
+                'whatsapp_number_jid' => $this->whatsappNumber->jid,
+                'contact_jid_from_conversation' => $this->to,
+                'service_url' => $whatsappServiceUrl
+            ]);
 
             // Preparar payload baseado no tipo de mensagem
             $messagePayload = $this->prepareMessagePayload();
 
             // Usar nova API Go: POST /number/message com X-Number-Id header (usa o JID)
+            Log::info('Enviando mensagem para serviço WhatsApp', [
+                'service_url' => $whatsappServiceUrl,
+                'x_number_id' => $this->whatsappNumber->jid,
+                'to' => $this->to,
+                'message_type' => $this->message->type,
+                'payload' => $messagePayload
+            ]);
+
             $response = Http::timeout(25)->retry(2, 100)->withHeaders([
                 'X-Number-Id' => $this->whatsappNumber->jid
             ])->post("{$whatsappServiceUrl}/number/message", [
@@ -144,19 +160,23 @@ class SendWhatsAppMessage implements ShouldQueue
             } else {
                 // Extrair mensagem de erro específica da resposta
                 $errorMessage = $this->extractErrorMessage($response);
-
-                $this->message->update([
-                    'delivery_status' => 'failed',
-                    'error_message' => $errorMessage
-                ]);
+                $responseBody = $response->body();
+                $responseStatus = $response->status();
 
                 Log::error('Erro ao enviar mensagem via WhatsApp', [
                     'message_id' => $this->message->id,
                     'whatsapp_number_id' => $this->whatsappNumber->id,
                     'jid' => $this->whatsappNumber->jid,
-                    'error' => $response->body(),
-                    'status' => $response->status(),
+                    'service_url' => $whatsappServiceUrl,
+                    'request_payload' => ['To' => $this->to, 'Message' => $messagePayload],
+                    'response_status' => $responseStatus,
+                    'response_body' => $responseBody,
                     'extracted_error' => $errorMessage
+                ]);
+
+                $this->message->update([
+                    'delivery_status' => 'failed',
+                    'error_message' => $errorMessage ?: "HTTP {$responseStatus}: {$responseBody}"
                 ]);
 
                 // Para erros críticos, pode ser útil tentar novamente

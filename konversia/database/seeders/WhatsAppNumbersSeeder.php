@@ -130,7 +130,7 @@ class WhatsAppNumbersSeeder extends Seeder
         // Criar números WhatsApp de exemplo
         $whatsappNumbers = [
             [
-                'phone_number' => '5511999999999',
+                'phone_number' => '5554991769535',
                 'nickname' => 'Principal',
                 'description' => 'Número principal da empresa',
                 'status' => 'active',
@@ -142,28 +142,6 @@ class WhatsAppNumbersSeeder extends Seeder
                         'end' => '18:00',
                         'timezone' => 'America/Sao_Paulo',
                     ],
-                ],
-            ],
-            [
-                'phone_number' => '5511988888888',
-                'nickname' => 'Vendas',
-                'description' => 'Número dedicado para vendas',
-                'status' => 'active',
-                'auto_reconnect' => true,
-                'settings' => [
-                    'welcome_message' => 'Olá! Gostaria de falar com nosso time de vendas?',
-                    'auto_assign_department' => 'vendas',
-                ],
-            ],
-            [
-                'phone_number' => '5511977777777',
-                'nickname' => 'Suporte',
-                'description' => 'Número para suporte técnico',
-                'status' => 'inactive',
-                'auto_reconnect' => true,
-                'settings' => [
-                    'welcome_message' => 'Olá! Precisa de ajuda técnica?',
-                    'auto_assign_department' => 'suporte',
                 ],
             ],
         ];

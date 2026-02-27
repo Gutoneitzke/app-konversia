@@ -85,6 +85,13 @@ class MessageController extends Controller
                 // Obter numero de destino (do contato)
                 $to = $conversation->getContactJid();
 
+                Log::info('MessageController - Enviando mensagem', [
+                    'message_id' => $message->id,
+                    'conversation_id' => $conversation->id,
+                    'contact_jid' => $to,
+                    'message_type' => $message->type
+                ]);
+
                 $this->whatsappService->sendMessage($message, $to);
             } catch (\Exception $e) {
                 Log::error('Erro ao enviar mensagem WhatsApp', [

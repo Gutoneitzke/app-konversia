@@ -15,7 +15,7 @@ class WhatsAppService
 
     public function __construct()
     {
-        $this->serviceUrl = config('services.whatsapp.service_url', env('WHATSAPP_SERVICE_URL', 'http://localhost:8080'));
+        $this->serviceUrl = config('services.whatsapp.service_url');
     }
 
     /**
